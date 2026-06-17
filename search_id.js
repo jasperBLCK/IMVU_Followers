@@ -1,0 +1,1 @@
+javascript:(function(){const origOpen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(method,url,...rest){const m=url.match(/user-(\d+)/);if(m){alert('ID: '+m[1]);XMLHttpRequest.prototype.open=origOpen;}return origOpen.apply(this,[method,url,...rest]);};})();

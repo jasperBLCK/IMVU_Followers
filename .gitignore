@@ -1,0 +1,9 @@
+# local settings (may contain credentials) — never commit
+settings.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/

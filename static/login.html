@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IMVU_NET // доступ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<canvas id="matrix"></canvas>
+
+<div class="auth">
+  <div class="auth-box">
+    <h1 class="auth-title">IMVU_NET<span class="blink">_</span></h1>
+    <div class="boot" id="boot"></div>
+
+    <div class="tabs">
+      <div class="tab active" id="tabAccount" onclick="switchTab('account')">// аккаунт</div>
+      <div class="tab" id="tabGuest" onclick="switchTab('guest')">// гость</div>
+    </div>
+
+    <!-- account -->
+    <div id="paneAccount">
+      <div class="field">
+        <label>Логин IMVU</label>
+        <input id="username" placeholder="username" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Пароль</label>
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <label class="check"><input type="checkbox" id="remember"> запомнить на этом сервере</label>
+      <button class="btn full" id="btnLogin" onclick="loginAccount()">[ войти в систему ]</button>
+    </div>
+
+    <!-- guest -->
+    <div id="paneGuest" class="hidden">
+      <p class="muted" style="line-height:1.7">
+        Гостевой доступ: только чтение. Ты сможешь пробить любой аккаунт по нику —
+        количество подписчиков/подписок, онлайн, страну, VIP-статус. Автоматизация
+        (подписки/отписки) недоступна.
+      </p>
+      <button class="btn cyan full" id="btnGuest" onclick="loginGuest()">[ войти как гость ]</button>
+    </div>
+
+    <div class="auth-err" id="err"></div>
+    <div class="auth-foot">
+      локальный инструмент · данные входа хранятся только в <code>settings.json</code> на твоём сервере
+    </div>
+  </div>
+</div>
+
+<script src="/static/matrix.js"></script>
+<script src="/static/login.js"></script>
+</body>
+</html>

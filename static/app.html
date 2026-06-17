@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IMVU_NET // консоль</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<canvas id="matrix"></canvas>
+<div class="toast-host" id="toastHost"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">IMVU_NET</span>
+    <span class="sub" id="clock">// консоль управления<span class="blink">_</span></span>
+  </div>
+  <div class="session-box">
+    <span class="badge" id="roleBadge">—</span>
+    <span class="muted" id="whoami"></span>
+    <button class="btn-logout" onclick="logout()">[ выход ]</button>
+  </div>
+</header>
+
+<main class="grid">
+  <!-- LEFT -->
+  <div class="col">
+    <!-- profile (user) -->
+    <section class="card hidden" id="profileCard">
+      <h2>профиль</h2>
+      <div class="profile-row">
+        <img class="avatar" id="meAvatar" alt="">
+        <div>
+          <div class="pname" id="meName">—</div>
+          <a class="phandle" id="meHandle" target="_blank" rel="noopener">@—</a>
+          <div class="pmeta" id="meTags"></div>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><b id="meFollowers">0</b><span>подписчиков</span></div>
+        <div class="stat"><b id="meFollowing">0</b><span>подписок</span></div>
+        <div class="stat"><b id="meCreated">—</b><span>создан</span></div>
+      </div>
+    </section>
+
+    <!-- lookup (guest + user) -->
+    <section class="card" id="lookupCard">
+      <h2>пробить аккаунт</h2>
+      <div class="field">
+        <label>Ник или ID</label>
+        <div class="inline">
+          <input id="lookupInput" placeholder="например, kilka00192">
+          <button class="btn cyan small" id="btnLookup" onclick="lookup()">scan</button>
+        </div>
+        <div class="hint">Гость видит только публичную стату. Аккаунт — ещё и подписку/отписку на цель.</div>
+      </div>
+      <div id="lookupResult"></div>
+    </section>
+
+    <!-- exceptions (user) -->
+    <section class="card hidden" id="exceptionsCard">
+      <h2>исключения · нельзя отписываться</h2>
+      <div class="inline" style="margin-bottom:10px">
+        <input id="excInput" placeholder="ник или ID для защиты">
+        <button class="btn small" onclick="addException()">+ добавить</button>
+      </div>
+      <button class="btn cyan full" onclick="openFriends()">⛨ выбрать из друзей</button>
+      <div class="hint">Открой список друзей и отметь тех, кого нельзя отписывать.</div>
+      <div class="exc-list" id="excList" style="margin-top:12px"></div>
+    </section>
+  </div>
+
+  <!-- RIGHT (user only) -->
+  <div class="col" id="userPanel">
+    <section class="card">
+      <h2>топ-5 подписок · по подписчикам</h2>
+      <button class="btn full" id="btnTop" onclick="loadTop()">★ собрать топ из моих подписок</button>
+      <div class="hint" id="topHint">Кого из тех, на кого ты подписан, читают больше всего.</div>
+      <ol class="top-list hidden" id="topList"></ol>
+    </section>
+
+    <section class="card">
+      <h2>цель и лимиты</h2>
+      <div class="field">
+        <label>Цель — ник или ID (чьих подписчиков фолловить)</label>
+        <input id="target_id" placeholder="kilka00192 или 286591267">
+      </div>
+      <div class="row">
+        <div class="field"><label>Макс. подписок</label><input id="max_follows" type="number" min="1"></div>
+        <div class="field"><label>Задержка фоллоу (с)</label><input id="follow_delay" type="number" step="0.1" min="0"></div>
+      </div>
+      <div class="field"><label>Задержка отписки (с)</label><input id="unfollow_delay" type="number" step="0.1" min="0"></div>
+      <label class="check"><input type="checkbox" id="only_non_followers"> отписаться только от невзаимных</label>
+      <div class="btns">
+        <button class="btn" id="bFollow" onclick="startJob('follow')">▶ старт подписок</button>
+        <button class="btn danger" id="bUnfollow" onclick="startJob('unfollow')">▶ старт отписок</button>
+        <button class="btn ghost" onclick="stopJob()">■ стоп</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>аналитика отношений</h2>
+      <button class="btn cyan full" id="btnAna" onclick="analyze()">просканировать связи</button>
+      <div class="ana hidden" id="anaGrid" style="margin-top:14px">
+        <div class="cellv"><b id="aMutual">0</b><span>взаимные</span></div>
+        <div class="cellv fans"><b id="aFans">0</b><span>фанаты</span></div>
+        <div class="cellv non"><b id="aNon">0</b><span>невзаимные</span></div>
+      </div>
+      <div class="hint hidden" id="anaHint"></div>
+    </section>
+
+    <section class="card">
+      <h2>журнал выполнения</h2>
+      <div class="metrics">
+        <div class="metric"><b id="mDone">0</b><span>сделано</span></div>
+        <div class="metric"><b id="mErrors">0</b><span>ошибки</span></div>
+        <div class="metric"><b id="mSkipped">0</b><span>пропуски</span></div>
+        <div class="metric"><b id="mRate">0</b><span>в минуту</span></div>
+        <div class="metric"><b id="mEta">—</b><span>осталось</span></div>
+      </div>
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      <div class="log" id="log" style="margin-top:12px"></div>
+    </section>
+  </div>
+</main>
+
+<!-- friends picker modal -->
+<div class="modal-host hidden" id="friendsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>друзья · отметь защищённых</h2>
+      <span class="x" onclick="closeFriends()">✕</span>
+    </div>
+    <div class="modal-tools">
+      <input id="friendsFilter" placeholder="фильтр по имени / ID" oninput="renderFriends()">
+      <label class="check"><input type="checkbox" id="friendsOnline" onchange="renderFriends()"> только онлайн</label>
+      <button class="btn ghost small" onclick="toggleAllFriends()">выделить всё</button>
+    </div>
+    <div class="friend-list" id="friendList"><div class="muted">загрузка...</div></div>
+    <div class="modal-foot">
+      <span class="muted" id="friendsCount">—</span>
+      <button class="btn cyan" id="btnAddFriends" onclick="addPicked()">+ в исключения (<span id="pickCount">0</span>)</button>
+    </div>
+  </div>
+</div>
+
+<footer class="foot">IMVU_NET · локальная панель · не аффилирована с IMVU Inc.</footer>
+
+<script src="/static/matrix.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

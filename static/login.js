@@ -35,7 +35,25 @@ function switchTab(which) {
   $("tabGuest").classList.toggle("active", !acc);
   $("paneAccount").classList.toggle("hidden", !acc);
   $("paneGuest").classList.toggle("hidden", acc);
+  $("pane2fa").classList.add("hidden");
   $("err").textContent = "";
+}
+
+function show2fa(show) {
+  $("pane2fa").classList.toggle("hidden", !show);
+  $("paneAccount").classList.toggle("hidden", show);
+  if (show) {
+    $("code2fa").value = "";
+    $("code2fa").focus();
+  }
+}
+
+function cancel2fa() {
+  setErr("");
+  show2fa(false);
+  const btn = $("btnLogin");
+  btn.disabled = false;
+  btn.textContent = "[ войти в систему ]";
 }
 
 function setErr(msg) {
@@ -58,10 +76,34 @@ async function loginAccount() {
   if (j.ok) {
     sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
     location.href = "/";
+  } else if (j.need_2fa) {
+    setErr("");
+    show2fa(true);
   } else {
     setErr("ACCESS DENIED: " + (j.error || "ошибка входа"));
     btn.disabled = false;
     btn.textContent = "[ войти в систему ]";
+  }
+}
+
+async function submit2fa() {
+  setErr("");
+  const code = $("code2fa").value.trim();
+  if (!code) return setErr("введите код из письма");
+  const btn = $("btn2fa");
+  btn.disabled = true;
+  btn.textContent = "[ проверка... ]";
+  const j = await api("/api/auth/2fa", { code });
+  btn.disabled = false;
+  btn.textContent = "[ подтвердить код ]";
+  if (j.ok) {
+    sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
+    location.href = "/";
+  } else if (j.restart) {
+    setErr(j.error || "сессия истекла — войдите заново");
+    cancel2fa();
+  } else {
+    setErr("ACCESS DENIED: " + (j.error || "неверный код"));
   }
 }
 
@@ -92,4 +134,8 @@ async function loginGuest() {
 
 $("password").addEventListener("keydown", (e) => {
   if (e.key === "Enter") loginAccount();
+});
+
+$("code2fa").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submit2fa();
 });

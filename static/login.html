@@ -35,6 +35,20 @@
       <button class="btn full" id="btnLogin" onclick="loginAccount()">[ войти в систему ]</button>
     </div>
 
+    <!-- 2fa code -->
+    <div id="pane2fa" class="hidden">
+      <p class="muted" style="line-height:1.7">
+        IMVU отправил код безопасности на почту аккаунта. Введи его ниже,
+        чтобы завершить вход.
+      </p>
+      <div class="field">
+        <label>Код из письма</label>
+        <input id="code2fa" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
+      </div>
+      <button class="btn full" id="btn2fa" onclick="submit2fa()">[ подтвердить код ]</button>
+      <button class="btn ghost full" style="margin-top:8px" onclick="cancel2fa()">[ назад ]</button>
+    </div>
+
     <!-- guest -->
     <div id="paneGuest" class="hidden">
       <p class="muted" style="line-height:1.7">

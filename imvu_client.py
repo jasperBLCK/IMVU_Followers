@@ -53,6 +53,10 @@ class IMVUError(Exception):
     """Raised when an IMVU API operation fails in a non-recoverable way."""
 
 
+class TwoFactorRequired(IMVUError):
+    """Raised when IMVU asks for a security code sent to the account email."""
+
+
 @dataclass
 class UserCard:
     """A friendly summary of an IMVU user, built from denormalized records."""
@@ -164,15 +168,28 @@ class IMVUClient:
     # ------------------------------------------------------------------ #
     # Auth
     # ------------------------------------------------------------------ #
-    def login(self):
-        """Authenticate and store the session sauce + own user id."""
+    def login(self, code=None):
+        """Authenticate and store the session sauce + own user id.
+
+        ``code`` is the optional email security code (2FA). When IMVU asks
+        for one, :class:`TwoFactorRequired` is raised — call ``login`` again
+        with the code the user received.
+        """
+        data = {"username": self.username, "password": self.password}
+        if code:
+            data["2fa_code"] = str(code).strip()
         resp = self._request(
             "POST",
             f"{self.base}/login",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data={"username": self.username, "password": self.password},
+            data=data,
         )
         if resp.status_code not in (200, 201):
+            if self._is_2fa_challenge(resp):
+                raise TwoFactorRequired(
+                    "Требуется код подтверждения: IMVU отправил код безопасности "
+                    "на почту аккаунта. Введите его, чтобы продолжить."
+                )
             raise IMVUError(self._login_error(resp))
 
         data = resp.json()
@@ -189,6 +206,18 @@ class IMVUClient:
         self.my_user_id = match.group(1)
         self.session.headers["X-imvu-sauce"] = sauce
         return self.my_user_id
+
+    @staticmethod
+    def _is_2fa_challenge(resp):
+        """Detect the "security code sent to your email" login challenge."""
+        try:
+            payload = resp.json()
+        except ValueError:
+            return False
+        text = " ".join(
+            str(payload.get(k, "")) for k in ("message", "error", "imvu_error")
+        ).lower()
+        return "security code" in text or "2fa" in text
 
     @staticmethod
     def _login_error(resp):

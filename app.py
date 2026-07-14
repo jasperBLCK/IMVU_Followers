@@ -30,6 +30,7 @@ from flask import (
 )
 
 from imvu_client import IMVUClient, IMVUError, TwoFactorRequired
+from imq_client import IMQError, RoomChatSession
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
@@ -682,6 +683,94 @@ def api_stop(ctx):
 @require_role("user")
 def api_status(ctx):
     return jsonify(runner.snapshot())
+
+
+# --------------------------------------------------------------------------- #
+# Live room chat (IMQ)
+# --------------------------------------------------------------------------- #
+def _chat_name(ctx, cid):
+    """Resolve a numeric user id to a display name, cached per web session."""
+    cache = ctx.setdefault("_name_cache", {})
+    cid = str(cid)
+    if cid not in cache:
+        name = cid
+        try:
+            card = ctx["client"].get_profile_summary(cid)
+            name = card.avatar_name or card.name or cid
+        except IMVUError:
+            pass
+        cache[cid] = name
+    return cache[cid]
+
+
+@app.route("/api/room/join", methods=["POST"])
+@require_role("user")
+def api_room_join(ctx):
+    room = (request.get_json(force=True) or {}).get("room", "").strip()
+    if not room:
+        return jsonify({"ok": False, "error": "Укажите комнату (room-<id> или ссылку)"}), 400
+    old = ctx.pop("chat", None)
+    if old:
+        old.stop()
+    chat = RoomChatSession(ctx["client"], room)
+    try:
+        info = chat.start()
+    except (IMQError, IMVUError) as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    ctx["chat"] = chat
+    return jsonify(
+        {
+            "ok": True,
+            "room_id": info.room_id,
+            "name": info.name,
+            "occupancy": info.occupancy,
+            "capacity": info.capacity,
+        }
+    )
+
+
+@app.route("/api/room/messages", methods=["GET"])
+@require_role("user")
+def api_room_messages(ctx):
+    chat = ctx.get("chat")
+    if not chat:
+        return jsonify({"ok": False, "error": "Вы не в комнате"}), 400
+    msgs = [
+        {
+            "user_id": m.user_id,
+            "name": _chat_name(ctx, m.user_id),
+            "text": m.text,
+            "sequence": m.sequence,
+            "self": str(m.user_id) == str(ctx["client"].my_user_id),
+        }
+        for m in chat.poll()
+    ]
+    return jsonify({"ok": True, "messages": msgs})
+
+
+@app.route("/api/room/send", methods=["POST"])
+@require_role("user")
+def api_room_send(ctx):
+    chat = ctx.get("chat")
+    if not chat:
+        return jsonify({"ok": False, "error": "Вы не в комнате"}), 400
+    text = (request.get_json(force=True) or {}).get("text", "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "Пустое сообщение"}), 400
+    try:
+        chat.send(text)
+    except IMQError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/room/leave", methods=["POST"])
+@require_role("user")
+def api_room_leave(ctx):
+    chat = ctx.pop("chat", None)
+    if chat:
+        chat.stop()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

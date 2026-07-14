@@ -101,6 +101,19 @@ class Page:
     next_before: str = None
 
 
+@dataclass
+class ChatInfo:
+    """Live-chat metadata for a room, used to talk to IMVU's IMQ gateway."""
+
+    chat_url: str
+    imq_queue: str
+    imq_messages_mount: str
+    room_id: str = ""
+    name: str = ""
+    occupancy: int = 0
+    capacity: int = 0
+
+
 def _id_from_url(url):
     matches = _USER_ID_RE.findall(url or "")
     return matches[-1] if matches else None
@@ -115,6 +128,8 @@ class IMVUClient:
         self.timeout = timeout
         self.base = base.rstrip("/")
         self.my_user_id = None
+        self.session_id = None
+        self.remember_device_token = None
         self.session = requests.Session()
         self.session.mount("https://", TLSAdapter())
         self.session.verify = False
@@ -208,6 +223,13 @@ class IMVUClient:
             raise IMVUError("Не удалось определить свой user id из ответа логина")
         self.my_user_id = match.group(1)
         self.session.headers["X-imvu-sauce"] = sauce
+        # The login node id is the session id (== osCsid cookie). IMQ uses it
+        # as the connection "cookie", and remember_device_token lets a future
+        # login skip the email code.
+        self.session_id = (login_key or "").rsplit("/", 1)[-1] or self.session.cookies.get(
+            "osCsid"
+        )
+        self.remember_device_token = login_data.get("remember_device_token") or None
         return self.my_user_id
 
     @staticmethod
@@ -530,6 +552,87 @@ class IMVUClient:
         followers = {c.user_id for c in self.iter_subscribers(self.my_user_id, limit=limit)}
         keep = set(str(x) for x in (exclude or ()))
         return sorted(following - followers - keep)
+
+    # ------------------------------------------------------------------ #
+    # Rooms / live chat (IMQ)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _norm_room_id(room):
+        """Accept ``room-<owner>-<n>``, a room URL or ``<owner>-<n>``."""
+        room = str(room).strip().rstrip("/")
+        if "/" in room:
+            room = room.rsplit("/", 1)[-1]
+        if not room.startswith("room-"):
+            room = f"room-{room}"
+        return room
+
+    def get_room_chat(self, room):
+        """Resolve a room to its live-chat metadata (:class:`ChatInfo`).
+
+        Follows the room's ``chat`` relation and reads the ``imq_queue`` and
+        ``imq_messages_mount`` that the IMQ gateway uses for the room chat.
+        """
+        self._require_login()
+        room_id = self._norm_room_id(room)
+        room_url = f"{self.base}/room/{room_id}"
+        resp = self._request("GET", room_url, retries=2)
+        if resp.status_code != 200:
+            raise IMVUError(f"Комната {room_id} недоступна (HTTP {resp.status_code})")
+        body = resp.json()
+        room_rec = body.get("denormalized", {}).get(room_url, {})
+        room_data = room_rec.get("data", {})
+        chat_url = room_rec.get("relations", {}).get("chat")
+        if not chat_url:
+            raise IMVUError(f"У комнаты {room_id} нет чата (relation chat)")
+
+        chat_resp = self._request("GET", chat_url, retries=2)
+        if chat_resp.status_code != 200:
+            raise IMVUError(f"Чат комнаты недоступен (HTTP {chat_resp.status_code})")
+        chat_data = (
+            chat_resp.json().get("denormalized", {}).get(chat_url, {}).get("data", {})
+        )
+        queue = chat_data.get("imq_queue")
+        mount = chat_data.get("imq_messages_mount")
+        if not queue or not mount:
+            raise IMVUError("В чате комнаты нет imq_queue/imq_messages_mount")
+        return ChatInfo(
+            chat_url=chat_url,
+            imq_queue=queue,
+            imq_messages_mount=mount,
+            room_id=room_id,
+            name=room_data.get("name", ""),
+            occupancy=room_data.get("occupancy", 0) or 0,
+            capacity=room_data.get("capacity", 0) or 0,
+        )
+
+    def join_room_chat(self, chat):
+        """Register the logged-in user as a participant of a room chat.
+
+        Without this the IMQ gateway rejects sends with ``unknown_user``.
+        ``chat`` is a :class:`ChatInfo` or a chat URL.
+        """
+        self._require_login()
+        chat_url = chat.chat_url if isinstance(chat, ChatInfo) else str(chat)
+        resp = self._request(
+            "POST",
+            f"{chat_url}/participants",
+            json={"id": f"{self.base}/user/user-{self.my_user_id}"},
+            retries=1,
+        )
+        if resp.status_code not in (200, 201):
+            raise IMVUError(f"Не удалось войти в чат (HTTP {resp.status_code})")
+        return True
+
+    def leave_room_chat(self, chat):
+        """Remove the logged-in user from a room chat's participants."""
+        self._require_login()
+        chat_url = chat.chat_url if isinstance(chat, ChatInfo) else str(chat)
+        url = f"{chat_url}/participants/user-{self.my_user_id}"
+        try:
+            resp = self._request("DELETE", url, retries=1)
+        except IMVUError:
+            return False
+        return resp.status_code in (200, 204)
 
     def get_relationship_stats(self, limit=50):
         """Compute mutual / fans / non-mutual relationship counts.

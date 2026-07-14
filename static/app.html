@@ -112,6 +112,27 @@
     </section>
 
     <section class="card">
+      <h2>чат комнаты · live (IMQ)</h2>
+      <div class="row">
+        <input id="roomInput" placeholder="room-357036039-1 или go.imvu.com/chat/...">
+        <button class="btn cyan small" id="btnRoomJoin" onclick="roomJoin()">войти</button>
+      </div>
+      <div class="hint" id="roomHint">Чтение и отправка живых реплик комнаты. Войди в комнату, чтобы начать.</div>
+      <div class="chat-box hidden" id="chatBox" style="margin-top:12px">
+        <div class="chat-head">
+          <span id="chatRoomName">—</span>
+          <button class="btn ghost small" onclick="roomLeave()">выйти</button>
+        </div>
+        <div class="chat-log" id="chatLog"></div>
+        <div class="row" style="margin-top:8px">
+          <input id="chatInput" placeholder="сообщение в комнату…" maxlength="1000"
+                 onkeydown="if(event.key==='Enter')roomSend()">
+          <button class="btn small" id="btnChatSend" onclick="roomSend()">отправить</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>журнал выполнения</h2>
       <div class="metrics">
         <div class="metric"><b id="mDone">0</b><span>сделано</span></div>

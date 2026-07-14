@@ -29,7 +29,7 @@ from flask import (
     session,
 )
 
-from imvu_client import IMVUClient, IMVUError
+from imvu_client import IMVUClient, IMVUError, TwoFactorRequired
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
@@ -72,6 +72,9 @@ def save_settings(settings):
 # --------------------------------------------------------------------------- #
 _sessions = {}
 _sessions_lock = threading.Lock()
+
+# Logins waiting for the email security code: pending_id -> login context
+_pending_2fa = {}
 
 
 def _new_session(role, client, username=""):
@@ -312,6 +315,16 @@ def auth_account():
         client = IMVUClient(username, password)
         client.login()
         profile = client.get_full_profile()
+    except TwoFactorRequired as exc:
+        pending_id = secrets.token_hex(16)
+        _pending_2fa[pending_id] = {
+            "client": client,
+            "username": username,
+            "password": password,
+            "remember": bool(body.get("remember")),
+        }
+        session["pending_2fa"] = pending_id
+        return jsonify({"ok": False, "need_2fa": True, "error": str(exc)})
     except IMVUError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     _new_session("user", client, username)
@@ -319,6 +332,37 @@ def auth_account():
         settings = load_settings()
         settings["username"] = username
         settings["password"] = password
+        save_settings(settings)
+    return jsonify({"ok": True, "role": "user", "profile": profile})
+
+
+@app.route("/api/auth/2fa", methods=["POST"])
+def auth_2fa():
+    body = request.get_json(force=True) or {}
+    code = (str(body.get("code") or "")).strip()
+    if not code:
+        return jsonify({"ok": False, "error": "Введите код из письма"}), 400
+    pending_id = session.get("pending_2fa")
+    pending = _pending_2fa.get(pending_id)
+    if not pending:
+        return jsonify(
+            {"ok": False, "error": "Сессия входа истекла — войдите заново", "restart": True}
+        ), 400
+    client = pending["client"]
+    try:
+        client.login(code=code)
+        profile = client.get_full_profile()
+    except TwoFactorRequired:
+        return jsonify({"ok": False, "need_2fa": True, "error": "Неверный код — попробуйте ещё раз"}), 400
+    except IMVUError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    _pending_2fa.pop(pending_id, None)
+    session.pop("pending_2fa", None)
+    _new_session("user", client, pending["username"])
+    if pending["remember"]:
+        settings = load_settings()
+        settings["username"] = pending["username"]
+        settings["password"] = pending["password"]
         save_settings(settings)
     return jsonify({"ok": True, "role": "user", "profile": profile})
 

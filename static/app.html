@@ -118,10 +118,16 @@
         <button class="btn cyan small" id="btnRoomJoin" onclick="roomJoin()">войти</button>
       </div>
       <div class="hint" id="roomHint">Чтение и отправка живых реплик комнаты. Войди в комнату, чтобы начать.</div>
+      <div class="recent-rooms" id="recentRooms"></div>
       <div class="chat-box hidden" id="chatBox" style="margin-top:12px">
         <div class="chat-head">
           <span id="chatRoomName">—</span>
+          <span class="ai-state" id="aiState"></span>
           <button class="btn ghost small" onclick="roomLeave()">выйти</button>
+        </div>
+        <div class="kicked-banner hidden" id="kickedBanner">
+          ⚠ соединение с комнатой потеряно — тебя выкинуло из румы
+          <button class="btn small" onclick="roomReconnect()">переподключиться</button>
         </div>
         <div class="chat-log" id="chatLog"></div>
         <div class="row" style="margin-top:8px">
@@ -129,6 +135,11 @@
                  onkeydown="if(event.key==='Enter')roomSend()">
           <button class="btn small" id="btnChatSend" onclick="roomSend()">отправить</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <input id="groqKey" type="password" placeholder="ключ Groq (gsk_…, нужен для ИИ)">
+          <button class="btn small" id="btnAI" onclick="aiToggle()">ИИ: выкл</button>
+        </div>
+        <div class="hint" id="aiHint">Режим ИИ: отвечает в чате как живой человек — не на каждое сообщение, с памятью о людях.</div>
       </div>
     </section>
 

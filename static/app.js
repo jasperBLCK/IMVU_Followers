@@ -71,6 +71,7 @@ async function init() {
     $("whoami").textContent = me.username ? "@" + me.username : "";
     loadSettings();
     loadExceptions();
+    loadRecentRooms();
     scheduleStatus();
     // login notification
     const stash = sessionStorage.getItem("just_logged_in");
@@ -421,6 +422,26 @@ async function poll() {
 
 // ---------------- live room chat (IMQ) ----------------
 let CHAT_TIMER = null;
+let LAST_ROOM = "";
+let AI_ON = false;
+
+function renderRecent(list) {
+  const box = $("recentRooms");
+  if (!box) return;
+  box.innerHTML = (list || [])
+    .map((r) => '<span class="room-chip" onclick="joinRecent(\'' + esc(r.room) + '\')">' + esc(r.name || r.room) + "</span>")
+    .join("");
+}
+
+async function loadRecentRooms() {
+  const r = await api("/api/room/recent");
+  if (r.ok) renderRecent(r.recent);
+}
+
+function joinRecent(room) {
+  $("roomInput").value = room;
+  roomJoin();
+}
 
 async function roomJoin() {
   const room = $("roomInput").value.trim();
@@ -430,6 +451,10 @@ async function roomJoin() {
   const r = await api("/api/room/join", { room });
   $("btnRoomJoin").disabled = false;
   if (!r.ok) { $("roomHint").textContent = r.error || "Не удалось войти"; toast("Чат", r.error, true); return; }
+  LAST_ROOM = room;
+  setAIState(false);
+  renderRecent(r.recent);
+  $("kickedBanner").classList.add("hidden");
   $("chatRoomName").textContent = (r.name || r.room_id) + "  ·  " + (r.occupancy || 0) + "/" + (r.capacity || 0);
   $("roomHint").textContent = "Ты в комнате. Реплики появляются ниже.";
   $("chatLog").innerHTML = "";
@@ -439,10 +464,45 @@ async function roomJoin() {
   roomPoll();
 }
 
+function roomReconnect() {
+  if (!LAST_ROOM) return;
+  $("roomInput").value = LAST_ROOM;
+  roomJoin();
+}
+
+function onKicked() {
+  if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
+  setAIState(false);
+  $("kickedBanner").classList.remove("hidden");
+  $("roomHint").textContent = "Соединение с комнатой потеряно.";
+  toast("Чат", "тебя выкинуло из комнаты", true);
+}
+
 async function roomPoll() {
   const r = await api("/api/room/messages");
   if (!r.ok) return;
   for (const m of r.messages) appendChat(m);
+  if (r.connected === false) { onKicked(); return; }
+  if (AI_ON && r.ai === false) {
+    setAIState(false);
+    if (r.ai_error) toast("ИИ", r.ai_error, true);
+  }
+}
+
+function setAIState(on) {
+  AI_ON = on;
+  $("btnAI").textContent = on ? "ИИ: вкл" : "ИИ: выкл";
+  $("btnAI").classList.toggle("cyan", on);
+  $("aiState").textContent = on ? "🤖 ИИ в чате" : "";
+}
+
+async function aiToggle() {
+  const key = $("groqKey").value.trim();
+  const r = await api("/api/room/ai", { enabled: !AI_ON, key });
+  if (!r.ok) { toast("ИИ", r.error, true); return; }
+  $("groqKey").value = "";
+  setAIState(!!r.ai);
+  toast(r.ai ? "ИИ включён — отвечает выборочно, как человек" : "ИИ выключен");
 }
 
 function appendChat(m) {
@@ -467,6 +527,7 @@ async function roomSend() {
 
 async function roomLeave() {
   if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
+  setAIState(false);
   await api("/api/room/leave", {});
   $("chatBox").classList.add("hidden");
   $("roomHint").textContent = "Ты вышел из комнаты.";

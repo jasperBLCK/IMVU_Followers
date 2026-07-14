@@ -408,7 +408,62 @@ async function poll() {
   renderLog(s.logs || []);
 }
 
+// ---------------- live room chat (IMQ) ----------------
+let CHAT_TIMER = null;
+
+async function roomJoin() {
+  const room = $("roomInput").value.trim();
+  if (!room) { toast("Укажите комнату", "", true); return; }
+  $("btnRoomJoin").disabled = true;
+  $("roomHint").textContent = "Подключаюсь к IMQ…";
+  const r = await api("/api/room/join", { room });
+  $("btnRoomJoin").disabled = false;
+  if (!r.ok) { $("roomHint").textContent = r.error || "Не удалось войти"; toast("Чат", r.error, true); return; }
+  $("chatRoomName").textContent = (r.name || r.room_id) + "  ·  " + (r.occupancy || 0) + "/" + (r.capacity || 0);
+  $("roomHint").textContent = "Ты в комнате. Реплики появляются ниже.";
+  $("chatLog").innerHTML = "";
+  $("chatBox").classList.remove("hidden");
+  if (CHAT_TIMER) clearInterval(CHAT_TIMER);
+  CHAT_TIMER = setInterval(roomPoll, 1500);
+  roomPoll();
+}
+
+async function roomPoll() {
+  const r = await api("/api/room/messages");
+  if (!r.ok) return;
+  for (const m of r.messages) appendChat(m);
+}
+
+function appendChat(m) {
+  const log = $("chatLog");
+  const line = document.createElement("div");
+  line.className = "chat-line" + (m.self ? " self" : "");
+  line.innerHTML = '<span class="chat-who">' + esc(m.name || m.user_id) + '</span>' +
+    '<span class="chat-text">' + esc(m.text) + '</span>';
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function roomSend() {
+  const inp = $("chatInput");
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = "";
+  const r = await api("/api/room/send", { text });
+  if (!r.ok) { toast("Чат", r.error, true); return; }
+  appendChat({ name: "я", text, self: true });
+}
+
+async function roomLeave() {
+  if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
+  await api("/api/room/leave", {});
+  $("chatBox").classList.add("hidden");
+  $("roomHint").textContent = "Ты вышел из комнаты.";
+}
+
 async function logout() {
+  if (CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; }
+  await api("/api/room/leave", {}).catch(() => {});
   await api("/api/auth/logout", {});
   location.href = "/login";
 }

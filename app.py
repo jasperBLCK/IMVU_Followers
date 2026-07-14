@@ -336,6 +336,35 @@ def auth_account():
     return jsonify({"ok": True, "role": "user", "profile": profile})
 
 
+@app.route("/api/auth/2fa/resend", methods=["POST"])
+def auth_2fa_resend():
+    """Trigger IMVU to email a fresh security code (a login attempt sends one)."""
+    pending_id = session.get("pending_2fa")
+    pending = _pending_2fa.get(pending_id)
+    if not pending:
+        return jsonify(
+            {"ok": False, "error": "Сессия входа истекла — войдите заново", "restart": True}
+        ), 400
+    client = pending["client"]
+    try:
+        client.login()
+    except TwoFactorRequired:
+        return jsonify({"ok": True, "resent": True})
+    except IMVUError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    # No challenge this time — the login just succeeded.
+    profile = client.get_full_profile()
+    _pending_2fa.pop(pending_id, None)
+    session.pop("pending_2fa", None)
+    _new_session("user", client, pending["username"])
+    if pending["remember"]:
+        settings = load_settings()
+        settings["username"] = pending["username"]
+        settings["password"] = pending["password"]
+        save_settings(settings)
+    return jsonify({"ok": True, "role": "user", "profile": profile})
+
+
 @app.route("/api/auth/2fa", methods=["POST"])
 def auth_2fa():
     body = request.get_json(force=True) or {}

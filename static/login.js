@@ -107,6 +107,27 @@ async function submit2fa() {
   }
 }
 
+async function resend2fa() {
+  setErr("");
+  const btn = $("btnResend");
+  btn.disabled = true;
+  btn.textContent = "[ отправка... ]";
+  const j = await api("/api/auth/2fa/resend", {});
+  btn.disabled = false;
+  btn.textContent = "[ отправить код повторно ]";
+  if (j.ok && j.profile) {
+    sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
+    location.href = "/";
+  } else if (j.ok) {
+    setErr("код отправлен повторно — проверь почту (и спам)");
+  } else if (j.restart) {
+    setErr(j.error || "сессия истекла — войдите заново");
+    cancel2fa();
+  } else {
+    setErr("ACCESS DENIED: " + (j.error || "не удалось отправить код"));
+  }
+}
+
 async function loginGuest() {
   setErr("");
   const btn = $("btnGuest");

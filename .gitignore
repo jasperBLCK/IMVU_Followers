@@ -1,5 +1,6 @@
 # local settings (may contain credentials) — never commit
 settings.json
+ai_memory.json
 
 # python
 __pycache__/

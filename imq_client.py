@@ -293,6 +293,8 @@ class RoomChatSession:
         self._ready = threading.Event()
         self._error = None
         self._stopping = False
+        # optional tap: called with every parsed ChatMessage (from the IMQ thread)
+        self.on_line = None
 
     # -- lifecycle ----------------------------------------------------- #
     def start(self, timeout=20):
@@ -335,6 +337,11 @@ class RoomChatSession:
             return
         msg.user_id = parsed[0] or msg.user_id
         msg.text = parsed[1]
+        if self.on_line is not None:
+            try:
+                self.on_line(msg)
+            except Exception:
+                pass
         try:
             self._inbox.put_nowait(msg)
         except queue.Full:
@@ -345,6 +352,15 @@ class RoomChatSession:
                 pass
 
     # -- public sync API ----------------------------------------------- #
+    def is_alive(self):
+        """True while the IMQ connection is still up."""
+        return bool(
+            self._thread
+            and self._thread.is_alive()
+            and self._error is None
+            and not self._stopping
+        )
+
     def poll(self):
         """Return and clear all buffered incoming :class:`ChatMessage`."""
         out = []

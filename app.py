@@ -29,6 +29,7 @@ from flask import (
     session,
 )
 
+from ai_chat import AIChatError, AIChatter
 from imvu_client import IMVUClient, IMVUError, TwoFactorRequired
 from imq_client import IMQError, RoomChatSession
 
@@ -46,6 +47,8 @@ DEFAULT_SETTINGS = {
     "follow_delay": 0.8,
     "unfollow_delay": 0.3,
     "exceptions": [],  # [{"id": "123", "name": "Alice"}]
+    "groq_api_key": "",
+    "recent_rooms": [],  # [{"room": "room-1-2", "name": "..."}]
 }
 
 JOB_KEYS = ("target_id", "max_follows", "follow_delay", "unfollow_delay")
@@ -703,12 +706,28 @@ def _chat_name(ctx, cid):
     return cache[cid]
 
 
+def _remember_room(room_id, name):
+    settings = load_settings()
+    recent = [r for r in settings.get("recent_rooms", []) if r.get("room") != room_id]
+    recent.insert(0, {"room": room_id, "name": name})
+    settings["recent_rooms"] = recent[:10]
+    save_settings(settings)
+    return settings["recent_rooms"]
+
+
+def _stop_ai(ctx):
+    ai = ctx.pop("ai", None)
+    if ai:
+        ai.stop()
+
+
 @app.route("/api/room/join", methods=["POST"])
 @require_role("user")
 def api_room_join(ctx):
     room = (request.get_json(force=True) or {}).get("room", "").strip()
     if not room:
         return jsonify({"ok": False, "error": "Укажите комнату (room-<id> или ссылку)"}), 400
+    _stop_ai(ctx)
     old = ctx.pop("chat", None)
     if old:
         old.stop()
@@ -718,6 +737,7 @@ def api_room_join(ctx):
     except (IMQError, IMVUError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     ctx["chat"] = chat
+    recent = _remember_room(info.room_id, info.name)
     return jsonify(
         {
             "ok": True,
@@ -725,6 +745,20 @@ def api_room_join(ctx):
             "name": info.name,
             "occupancy": info.occupancy,
             "capacity": info.capacity,
+            "recent": recent,
+        }
+    )
+
+
+@app.route("/api/room/recent", methods=["GET"])
+@require_role("user")
+def api_room_recent(ctx):
+    settings = load_settings()
+    return jsonify(
+        {
+            "ok": True,
+            "recent": settings.get("recent_rooms", []),
+            "has_groq_key": bool(settings.get("groq_api_key")),
         }
     )
 
@@ -747,7 +781,16 @@ def api_room_messages(ctx):
         for m in chat.poll()
         if str(m.user_id) != str(ctx["client"].my_user_id)
     ]
-    return jsonify({"ok": True, "messages": msgs})
+    ai = ctx.get("ai")
+    return jsonify(
+        {
+            "ok": True,
+            "messages": msgs,
+            "connected": chat.is_alive(),
+            "ai": bool(ai and ai.alive()),
+            "ai_error": ai.last_error if ai else "",
+        }
+    )
 
 
 @app.route("/api/room/send", methods=["POST"])
@@ -769,10 +812,46 @@ def api_room_send(ctx):
 @app.route("/api/room/leave", methods=["POST"])
 @require_role("user")
 def api_room_leave(ctx):
+    _stop_ai(ctx)
     chat = ctx.pop("chat", None)
     if chat:
         chat.stop()
     return jsonify({"ok": True})
+
+
+@app.route("/api/room/ai", methods=["POST"])
+@require_role("user")
+def api_room_ai(ctx):
+    body = request.get_json(force=True) or {}
+    enabled = bool(body.get("enabled"))
+    key = (body.get("key") or "").strip()
+    settings = load_settings()
+    if key:
+        settings["groq_api_key"] = key
+        save_settings(settings)
+    if not enabled:
+        _stop_ai(ctx)
+        return jsonify({"ok": True, "ai": False})
+    chat = ctx.get("chat")
+    if not chat or not chat.is_alive():
+        return jsonify({"ok": False, "error": "Сначала войдите в комнату"}), 400
+    api_key = settings.get("groq_api_key", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "Добавьте ключ Groq"}), 400
+    _stop_ai(ctx)
+    try:
+        ai = AIChatter(
+            api_key,
+            chat.send,
+            lambda cid: _chat_name(ctx, cid),
+            ctx["client"].my_user_id,
+            ctx.get("username", ""),
+        )
+    except AIChatError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    chat.on_line = ai.handle
+    ctx["ai"] = ai
+    return jsonify({"ok": True, "ai": True})
 
 
 if __name__ == "__main__":

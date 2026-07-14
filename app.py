@@ -735,15 +735,17 @@ def api_room_messages(ctx):
     chat = ctx.get("chat")
     if not chat:
         return jsonify({"ok": False, "error": "Вы не в комнате"}), 400
+    # own lines are rendered locally by the UI, so drop their echo here
     msgs = [
         {
             "user_id": m.user_id,
             "name": _chat_name(ctx, m.user_id),
             "text": m.text,
             "sequence": m.sequence,
-            "self": str(m.user_id) == str(ctx["client"].my_user_id),
+            "self": False,
         }
         for m in chat.poll()
+        if str(m.user_id) != str(ctx["client"].my_user_id)
     ]
     return jsonify({"ok": True, "messages": msgs})
 

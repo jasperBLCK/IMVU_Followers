@@ -56,6 +56,10 @@ class IMVUError(Exception):
 class TwoFactorRequired(IMVUError):
     """Raised when IMVU asks for a security code sent to the account email."""
 
+    def __init__(self, message, email=""):
+        super().__init__(message)
+        self.email = email
+
 
 @dataclass
 class UserCard:
@@ -178,17 +182,16 @@ class IMVUClient:
         data = {"username": self.username, "password": self.password}
         if code:
             data["2fa_code"] = str(code).strip()
-        resp = self._request(
-            "POST",
-            f"{self.base}/login",
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            data=data,
-        )
+            data["remember_device"] = True
+        resp = self._request("POST", f"{self.base}/login", json=data)
         if resp.status_code not in (200, 201):
+            email = self._challenge_email(resp)
             if self._is_2fa_challenge(resp):
+                where = f" {email}" if email else " аккаунта"
                 raise TwoFactorRequired(
                     "Требуется код подтверждения: IMVU отправил код безопасности "
-                    "на почту аккаунта. Введите его, чтобы продолжить."
+                    f"на почту{where}. Введите его, чтобы продолжить.",
+                    email=email,
                 )
             raise IMVUError(self._login_error(resp))
 
@@ -206,6 +209,14 @@ class IMVUClient:
         self.my_user_id = match.group(1)
         self.session.headers["X-imvu-sauce"] = sauce
         return self.my_user_id
+
+    @staticmethod
+    def _challenge_email(resp):
+        try:
+            details = resp.json().get("details", {}) or {}
+            return str(details.get("email_address", ""))
+        except ValueError:
+            return ""
 
     @staticmethod
     def _is_2fa_challenge(resp):

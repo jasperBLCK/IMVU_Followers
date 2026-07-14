@@ -324,7 +324,9 @@ def auth_account():
             "remember": bool(body.get("remember")),
         }
         session["pending_2fa"] = pending_id
-        return jsonify({"ok": False, "need_2fa": True, "error": str(exc)})
+        return jsonify(
+            {"ok": False, "need_2fa": True, "error": str(exc), "email": exc.email}
+        )
     except IMVUError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     _new_session("user", client, username)
@@ -348,8 +350,8 @@ def auth_2fa_resend():
     client = pending["client"]
     try:
         client.login()
-    except TwoFactorRequired:
-        return jsonify({"ok": True, "resent": True})
+    except TwoFactorRequired as exc:
+        return jsonify({"ok": True, "resent": True, "email": exc.email})
     except IMVUError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     # No challenge this time — the login just succeeded.

@@ -112,17 +112,30 @@ POST https://api.imvu.com/chat/chat-357036039-1/participants
 
 ### send_message **[verified]** (from bundle: кодировщик в `imq.min.js`)
 
+Содержимое `message` — это **base64 от JSON-конверта**, а не голый текст.
+Шлюз примет и голый текст (`status:0`), но клиенты комнаты его игнорируют:
+
 ```jsonc
 {
   "record": "msg_c2g_send_message",
   "queue": "/chat/560603123",
   "mount": "messages",
-  "message": "<base64(текст)>",
+  "message": "<base64('{\"chatId\":\"560603123\",\"message\":\"текст\",\"to\":0,\"userId\":\"357036039\"}')>",
   "op_id": 2
 }
 ```
+
+* `chatId` — числовая часть `imq_queue`;
+* `to` — `0` для всей комнаты, cid получателя для шёпота;
+* `userId` — legacy_cid отправителя.
+
 Успех: `msg_g2c_result{op_id:2, status:0}`. Ошибка: `status!=0` +
 `error_message` (например `unknown_user`, если не вошли участником).
+
+### keepalive **[verified: from bundle]**
+
+Каждые 45 секунд клиент шлёт `{"record":"msg_c2g_ping"}` — без пинга шлюз
+разрывает соединение и участника выкидывает из комнаты.
 
 ### входящая реплика **[verified: envelope]**
 
@@ -138,6 +151,11 @@ POST https://api.imvu.com/chat/chat-357036039-1/participants
 ```
 Фильтр реплик комнаты: `record == msg_g2c_send_message`, `queue == imq_queue`,
 `mount == imq_messages_mount`. `user_id` и `message` — base64.
+
+Раскодированный `message` — тот же JSON-конверт `{chatId, message, to, userId}`.
+Помимо человеческих реплик в mount `messages` идут служебные команды движка
+(`*imvu:isPureUser`, `*putOnOutfit ...`, `*msg SeatAssignment ...`) и шёпоты
+(`to != 0`) — при показе чата их нужно отфильтровывать.
 
 **[note]** IMVU **не** возвращает отправителю его собственную реплику эхом —
 свои сообщения UI показывает локально. Чужие реплики видны, когда в комнате

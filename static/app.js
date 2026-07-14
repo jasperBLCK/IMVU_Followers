@@ -71,8 +71,7 @@ async function init() {
     $("whoami").textContent = me.username ? "@" + me.username : "";
     loadSettings();
     loadExceptions();
-    setInterval(poll, 1000);
-    poll();
+    scheduleStatus();
     // login notification
     const stash = sessionStorage.getItem("just_logged_in");
     if (stash) {
@@ -367,7 +366,10 @@ async function analyze() {
 async function startJob(kind) {
   const j = await api("/api/" + kind, collectJob());
   if (!j.ok) toast("ошибка", j.error, true);
-  else toast(kind === "follow" ? "задача подписок запущена" : "задача отписок запущена");
+  else {
+    toast(kind === "follow" ? "задача подписок запущена" : "задача отписок запущена");
+    scheduleStatus();
+  }
 }
 async function stopJob() {
   await api("/api/stop", {});
@@ -386,14 +388,22 @@ function renderLog(logs) {
     .join("");
   el.scrollTop = el.scrollHeight;
 }
+let STATUS_TIMER = null;
+function scheduleStatus() {
+  if (STATUS_TIMER) clearTimeout(STATUS_TIMER);
+  poll().then((running) => {
+    // poll fast while a job runs, idle slowly otherwise
+    STATUS_TIMER = setTimeout(scheduleStatus, running ? 1000 : 5000);
+  });
+}
 async function poll() {
   let s;
   try {
     s = await api("/api/status");
   } catch (e) {
-    return;
+    return false;
   }
-  if (!s || !s.stats) return;
+  if (!s || !s.stats) return false;
   const st = s.stats;
   $("mDone").textContent = st.done || 0;
   $("mErrors").textContent = st.errors || 0;
@@ -406,6 +416,7 @@ async function poll() {
   $("bFollow").disabled = s.running;
   $("bUnfollow").disabled = s.running;
   renderLog(s.logs || []);
+  return !!s.running;
 }
 
 // ---------------- live room chat (IMQ) ----------------
@@ -424,7 +435,7 @@ async function roomJoin() {
   $("chatLog").innerHTML = "";
   $("chatBox").classList.remove("hidden");
   if (CHAT_TIMER) clearInterval(CHAT_TIMER);
-  CHAT_TIMER = setInterval(roomPoll, 1500);
+  CHAT_TIMER = setInterval(roomPoll, 2500);
   roomPoll();
 }
 

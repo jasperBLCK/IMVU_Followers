@@ -147,6 +147,9 @@ class IMQClient:
         self._ws = None
         self._op = 0
         self._on_message = None
+        # set when the gateway removes us from a queue (silent room kick):
+        # the socket stays open, so this is the only signal we were booted
+        self.kicked = False
 
     def _next_op(self):
         self._op += 1
@@ -255,7 +258,8 @@ class IMQClient:
                     rec = json.loads(raw)
                 except ValueError:
                     continue
-                if rec.get("record") == "msg_g2c_send_message":
+                record = rec.get("record")
+                if record == "msg_g2c_send_message":
                     on_message(
                         ChatMessage(
                             user_id=_unb64(rec.get("user_id", "")),
@@ -265,6 +269,11 @@ class IMQClient:
                             sequence=rec.get("sequence", 0) or 0,
                         )
                     )
+                elif record == "msg_g2c_left_queue":
+                    raw_uid = str(rec.get("user_id", ""))
+                    if self.user_id in (raw_uid, _unb64(raw_uid)):
+                        self.kicked = True
+                        return
         finally:
             ping_task.cancel()
 
@@ -331,7 +340,12 @@ class RoomChatSession:
         self._ready.set()
         while True:
             await self._imq.run(self._buffer_message)
-            if self._stopping or not await self._reconnect():
+            kicked = self._imq.kicked
+            try:
+                await self._imq.close()
+            except Exception:
+                pass
+            if self._stopping or not await self._reconnect(fast=kicked):
                 return
 
     async def _connect_once(self):
@@ -339,9 +353,14 @@ class RoomChatSession:
         await self._imq.connect()
         await self._imq.subscribe(self.chat.imq_queue)
 
-    async def _reconnect(self):
-        """Rejoin the room after a dropped connection (queue may have rotated)."""
-        for delay in RECONNECT_DELAYS:
+    async def _reconnect(self, fast=False):
+        """Rejoin the room after a dropped connection (queue may have rotated).
+
+        ``fast`` is used after a silent room kick (``msg_g2c_left_queue``):
+        the socket was fine, so rejoin right away.
+        """
+        delays = (1,) + RECONNECT_DELAYS if fast else RECONNECT_DELAYS
+        for delay in delays:
             await asyncio.sleep(delay)
             if self._stopping:
                 return False

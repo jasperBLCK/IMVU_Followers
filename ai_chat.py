@@ -92,6 +92,7 @@ class AIChatter:
         self.last_reply_ts = 0.0
         self.last_error = ""
         self._q = queue.Queue()
+        self._sent = queue.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -109,6 +110,15 @@ class AIChatter:
 
     def alive(self):
         return self._thread.is_alive() and not self._stop.is_set()
+
+    def drain_sent(self):
+        """Забрать отправленные ИИ реплики (для показа в своём UI)."""
+        lines = []
+        while True:
+            try:
+                lines.append(self._sent.get_nowait())
+            except queue.Empty:
+                return lines
 
     # -- внутреннее ------------------------------------------------------ #
     def _worker(self):
@@ -137,6 +147,7 @@ class AIChatter:
                 self.send_func(reply)
                 self.history.append((self.nick, reply))
                 self.last_reply_ts = time.time()
+                self._sent.put(reply)
             except Exception as exc:
                 self.last_error = str(exc)
 

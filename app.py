@@ -782,6 +782,19 @@ def api_room_messages(ctx):
         if str(m.user_id) != str(ctx["client"].my_user_id)
     ]
     ai = ctx.get("ai")
+    if ai:
+        # AI replies go out under our own account, so their IMQ echo is
+        # filtered above — surface them explicitly instead
+        for text in ai.drain_sent():
+            msgs.append(
+                {
+                    "user_id": str(ctx["client"].my_user_id),
+                    "name": "я · ИИ",
+                    "text": text,
+                    "sequence": 0,
+                    "self": True,
+                }
+            )
     return jsonify(
         {
             "ok": True,

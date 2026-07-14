@@ -43,8 +43,13 @@ import websockets
 
 IMQ_URL = "wss://wss-imq.imvu.com/streaming/imvu_pre"
 
-# The frontend pings every 45s; without it the gateway drops the connection.
-PING_INTERVAL = 45
+# The frontend's ImqConnection pings 15s after the last outgoing frame
+# (pingInterval = 15*1e3, serverTimeout = 60*1e3); a slower ping gets the
+# connection dropped and the participant kicked from the room.
+PING_INTERVAL = 15
+
+# Backoff between automatic reconnect attempts after the gateway drops us.
+RECONNECT_DELAYS = (2, 5, 10, 20, 30)
 
 
 def _b64(text):
@@ -322,11 +327,32 @@ class RoomChatSession:
             self._loop.close()
 
     async def _main(self):
+        await self._connect_once()
+        self._ready.set()
+        while True:
+            await self._imq.run(self._buffer_message)
+            if self._stopping or not await self._reconnect():
+                return
+
+    async def _connect_once(self):
         self._imq = IMQClient(self.client.my_user_id, self.client.session_id)
         await self._imq.connect()
         await self._imq.subscribe(self.chat.imq_queue)
-        self._ready.set()
-        await self._imq.run(self._buffer_message)
+
+    async def _reconnect(self):
+        """Rejoin the room after a dropped connection (queue may have rotated)."""
+        for delay in RECONNECT_DELAYS:
+            await asyncio.sleep(delay)
+            if self._stopping:
+                return False
+            try:
+                self.chat = self.client.get_room_chat(self.room)
+                self.client.join_room_chat(self.chat)
+                await self._connect_once()
+                return True
+            except Exception:
+                continue
+        return False
 
     def _buffer_message(self, msg):
         # only surface actual room-chat lines from this room's queue/mount

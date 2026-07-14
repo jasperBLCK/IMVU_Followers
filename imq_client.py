@@ -43,6 +43,9 @@ import websockets
 
 IMQ_URL = "wss://wss-imq.imvu.com/streaming/imvu_pre"
 
+# The frontend pings every 45s; without it the gateway drops the connection.
+PING_INTERVAL = 45
+
 
 def _b64(text):
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
@@ -53,6 +56,47 @@ def _unb64(text):
         return base64.b64decode(text).decode("utf-8", "replace")
     except (ValueError, TypeError):
         return text or ""
+
+
+def _chat_id(imq_queue):
+    """Numeric chat id used inside the JSON payload (``/chat/123`` -> ``123``)."""
+    return str(imq_queue).rstrip("/").rsplit("/", 1)[-1]
+
+
+def _parse_incoming(raw_text):
+    """Extract ``(user_id, text)`` from a room-chat payload.
+
+    Room lines are JSON like ``{"chatId","message","to","userId"}``. Returns
+    ``None`` for whispers (``to`` != 0), engine commands (``*imvu:``,
+    ``*putOnOutfit``, ``*msg ...``) and empty lines — only human chat is kept.
+    """
+    user_id = ""
+    text = raw_text
+    try:
+        obj = json.loads(raw_text)
+    except (ValueError, TypeError):
+        obj = None
+    if isinstance(obj, dict):
+        if str(obj.get("to", 0)) not in ("0", "None"):
+            return None
+        text = obj.get("message", "")
+        user_id = str(obj.get("userId", "") or "")
+    text = (text or "").strip()
+    if not text or text.startswith("*"):
+        return None
+    return user_id, text
+
+
+def _build_outgoing(imq_queue, user_id, text):
+    """Wrap a chat line in the JSON envelope the room expects."""
+    return json.dumps(
+        {
+            "chatId": _chat_id(imq_queue),
+            "message": text,
+            "to": 0,
+            "userId": str(user_id),
+        }
+    )
 
 
 @dataclass
@@ -183,28 +227,41 @@ class IMQClient:
     async def ping(self):
         await self._send({"record": "msg_c2g_ping"})
 
+    async def _ping_loop(self):
+        while True:
+            await asyncio.sleep(PING_INTERVAL)
+            try:
+                await self.ping()
+            except (IMQError, OSError, websockets.WebSocketException):
+                return
+
     async def run(self, on_message):
         """Read frames until the socket closes, calling ``on_message`` per line.
 
         ``on_message`` receives a :class:`ChatMessage` for every incoming
-        ``msg_g2c_send_message`` record.
+        ``msg_g2c_send_message`` record. A keepalive ping runs alongside so the
+        gateway doesn't drop the connection.
         """
+        ping_task = asyncio.ensure_future(self._ping_loop())
         self._on_message = on_message
-        async for raw in self._ws:
-            try:
-                rec = json.loads(raw)
-            except ValueError:
-                continue
-            if rec.get("record") == "msg_g2c_send_message":
-                on_message(
-                    ChatMessage(
-                        user_id=_unb64(rec.get("user_id", "")),
-                        text=_unb64(rec.get("message", "")),
-                        queue=rec.get("queue", ""),
-                        mount=rec.get("mount", ""),
-                        sequence=rec.get("sequence", 0) or 0,
+        try:
+            async for raw in self._ws:
+                try:
+                    rec = json.loads(raw)
+                except ValueError:
+                    continue
+                if rec.get("record") == "msg_g2c_send_message":
+                    on_message(
+                        ChatMessage(
+                            user_id=_unb64(rec.get("user_id", "")),
+                            text=_unb64(rec.get("message", "")),
+                            queue=rec.get("queue", ""),
+                            mount=rec.get("mount", ""),
+                            sequence=rec.get("sequence", 0) or 0,
+                        )
                     )
-                )
+        finally:
+            ping_task.cancel()
 
     async def close(self):
         if self._ws is not None:
@@ -273,6 +330,11 @@ class RoomChatSession:
         # only surface actual room-chat lines from this room's queue/mount
         if msg.queue != self.chat.imq_queue or msg.mount != self.chat.imq_messages_mount:
             return
+        parsed = _parse_incoming(msg.text)
+        if parsed is None:
+            return
+        msg.user_id = parsed[0] or msg.user_id
+        msg.text = parsed[1]
         try:
             self._inbox.put_nowait(msg)
         except queue.Full:
@@ -300,9 +362,12 @@ class RoomChatSession:
             return False
         if not self._imq or not self._loop:
             raise IMQError("Сессия чата не запущена")
+        payload = _build_outgoing(
+            self.chat.imq_queue, self.client.my_user_id, text
+        )
         fut = asyncio.run_coroutine_threadsafe(
             self._imq.send_message(
-                self.chat.imq_queue, self.chat.imq_messages_mount, text
+                self.chat.imq_queue, self.chat.imq_messages_mount, payload
             ),
             self._loop,
         )

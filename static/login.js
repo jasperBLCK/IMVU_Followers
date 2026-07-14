@@ -78,6 +78,7 @@ async function loginAccount() {
     location.href = "/";
   } else if (j.need_2fa) {
     setErr("");
+    if (j.email) $("email2fa").textContent = j.email;
     show2fa(true);
   } else {
     setErr("ACCESS DENIED: " + (j.error || "ошибка входа"));
@@ -119,6 +120,7 @@ async function resend2fa() {
     sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
     location.href = "/";
   } else if (j.ok) {
+    if (j.email) $("email2fa").textContent = j.email;
     setErr("код отправлен повторно — проверь почту (и спам)");
   } else if (j.restart) {
     setErr(j.error || "сессия истекла — войдите заново");

@@ -505,7 +505,14 @@ async function aiToggle() {
   toast(r.ai ? "ИИ включён — отвечает выборочно, как человек" : "ИИ выключен");
 }
 
+let LAST_CHAT_LINE = { key: "", ts: 0 };
+
 function appendChat(m) {
+  // guard against duplicate echoes of the same line (e.g. own/AI messages)
+  const key = (m.name || m.user_id) + "\u0000" + m.text;
+  const now = Date.now();
+  if (key === LAST_CHAT_LINE.key && now - LAST_CHAT_LINE.ts < 6000) return;
+  LAST_CHAT_LINE = { key, ts: now };
   const log = $("chatLog");
   const line = document.createElement("div");
   line.className = "chat-line" + (m.self ? " self" : "");

@@ -29,7 +29,14 @@ from flask import (
     session,
 )
 
-from ai_chat import AIChatError, AIChatter
+from ai_chat import (
+    DEFAULT_STYLE,
+    DEFAULT_TEMPER,
+    STYLES,
+    TEMPERS,
+    AIChatError,
+    AIChatter,
+)
 from imvu_client import IMVUClient, IMVUError, TwoFactorRequired
 from imq_client import IMQError, RoomChatSession
 
@@ -48,6 +55,8 @@ DEFAULT_SETTINGS = {
     "unfollow_delay": 0.3,
     "exceptions": [],  # [{"id": "123", "name": "Alice"}]
     "groq_api_key": "",
+    "ai_style": DEFAULT_STYLE,
+    "ai_temper": DEFAULT_TEMPER,
     "recent_rooms": [],  # [{"room": "room-1-2", "name": "..."}]
 }
 
@@ -759,6 +768,10 @@ def api_room_recent(ctx):
             "ok": True,
             "recent": settings.get("recent_rooms", []),
             "has_groq_key": bool(settings.get("groq_api_key")),
+            "ai_style": settings.get("ai_style", DEFAULT_STYLE),
+            "ai_temper": settings.get("ai_temper", DEFAULT_TEMPER),
+            "styles": {k: v["label"] for k, v in STYLES.items()},
+            "tempers": {k: v["label"] for k, v in TEMPERS.items()},
         }
     )
 
@@ -838,9 +851,20 @@ def api_room_ai(ctx):
     body = request.get_json(force=True) or {}
     enabled = bool(body.get("enabled"))
     key = (body.get("key") or "").strip()
+    style = (body.get("style") or "").strip()
+    temper = (body.get("temper") or "").strip()
     settings = load_settings()
+    changed = False
     if key:
         settings["groq_api_key"] = key
+        changed = True
+    if style in STYLES:
+        settings["ai_style"] = style
+        changed = True
+    if temper in TEMPERS:
+        settings["ai_temper"] = temper
+        changed = True
+    if changed:
         save_settings(settings)
     if not enabled:
         _stop_ai(ctx)
@@ -859,6 +883,8 @@ def api_room_ai(ctx):
             lambda cid: _chat_name(ctx, cid),
             ctx["client"].my_user_id,
             ctx.get("username", ""),
+            style=settings.get("ai_style", DEFAULT_STYLE),
+            temper=settings.get("ai_temper", DEFAULT_TEMPER),
         )
     except AIChatError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400

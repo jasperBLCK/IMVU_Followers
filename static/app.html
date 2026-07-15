@@ -17,6 +17,11 @@
     <span class="logo">IMVU_NET</span>
     <span class="sub" id="clock">// консоль управления<span class="blink">_</span></span>
   </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-page="pageMain" onclick="showPage('pageMain')">обзор</button>
+    <button class="tab hidden" data-page="pageFollow" onclick="showPage('pageFollow')">подписки</button>
+    <button class="tab hidden" data-page="pageRoom" onclick="showPage('pageRoom')">комната · ИИ</button>
+  </nav>
   <div class="session-box">
     <span class="badge" id="roleBadge">—</span>
     <span class="muted" id="whoami"></span>
@@ -24,8 +29,8 @@
   </div>
 </header>
 
-<main class="grid">
-  <!-- LEFT -->
+<!-- СТРАНИЦА: обзор -->
+<main class="grid page" id="pageMain">
   <div class="col">
     <!-- profile (user) -->
     <section class="card hidden" id="profileCard">
@@ -72,7 +77,6 @@
     </section>
   </div>
 
-  <!-- RIGHT (user only) -->
   <div class="col" id="userPanel">
     <section class="card">
       <h2>топ-5 подписок · по подписчикам</h2>
@@ -81,6 +85,22 @@
       <ol class="top-list hidden" id="topList"></ol>
     </section>
 
+    <section class="card">
+      <h2>аналитика отношений</h2>
+      <button class="btn cyan full" id="btnAna" onclick="analyze()">просканировать связи</button>
+      <div class="ana hidden" id="anaGrid" style="margin-top:14px">
+        <div class="cellv"><b id="aMutual">0</b><span>взаимные</span></div>
+        <div class="cellv fans"><b id="aFans">0</b><span>фанаты</span></div>
+        <div class="cellv non"><b id="aNon">0</b><span>невзаимные</span></div>
+      </div>
+      <div class="hint hidden" id="anaHint"></div>
+    </section>
+  </div>
+</main>
+
+<!-- СТРАНИЦА: подписки -->
+<main class="grid page hidden" id="pageFollow">
+  <div class="col">
     <section class="card">
       <h2>цель и лимиты</h2>
       <div class="field">
@@ -99,18 +119,27 @@
         <button class="btn ghost" onclick="stopJob()">■ стоп</button>
       </div>
     </section>
+  </div>
 
+  <div class="col">
     <section class="card">
-      <h2>аналитика отношений</h2>
-      <button class="btn cyan full" id="btnAna" onclick="analyze()">просканировать связи</button>
-      <div class="ana hidden" id="anaGrid" style="margin-top:14px">
-        <div class="cellv"><b id="aMutual">0</b><span>взаимные</span></div>
-        <div class="cellv fans"><b id="aFans">0</b><span>фанаты</span></div>
-        <div class="cellv non"><b id="aNon">0</b><span>невзаимные</span></div>
+      <h2>журнал выполнения</h2>
+      <div class="metrics">
+        <div class="metric"><b id="mDone">0</b><span>сделано</span></div>
+        <div class="metric"><b id="mErrors">0</b><span>ошибки</span></div>
+        <div class="metric"><b id="mSkipped">0</b><span>пропуски</span></div>
+        <div class="metric"><b id="mRate">0</b><span>в минуту</span></div>
+        <div class="metric"><b id="mEta">—</b><span>осталось</span></div>
       </div>
-      <div class="hint hidden" id="anaHint"></div>
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      <div class="log" id="log" style="margin-top:12px"></div>
     </section>
+  </div>
+</main>
 
+<!-- СТРАНИЦА: комната · ИИ -->
+<main class="grid page hidden" id="pageRoom">
+  <div class="col">
     <section class="card">
       <h2>чат комнаты · live (IMQ)</h2>
       <div class="row">
@@ -135,25 +164,26 @@
                  onkeydown="if(event.key==='Enter')roomSend()">
           <button class="btn small" id="btnChatSend" onclick="roomSend()">отправить</button>
         </div>
-        <div class="row" style="margin-top:8px">
-          <input id="groqKey" type="password" placeholder="ключ Groq (gsk_…, нужен для ИИ)">
-          <button class="btn small" id="btnAI" onclick="aiToggle()">ИИ: выкл</button>
-        </div>
-        <div class="hint" id="aiHint">Режим ИИ: отвечает в чате как живой человек — не на каждое сообщение, с памятью о людях.</div>
       </div>
     </section>
+  </div>
 
+  <div class="col">
     <section class="card">
-      <h2>журнал выполнения</h2>
-      <div class="metrics">
-        <div class="metric"><b id="mDone">0</b><span>сделано</span></div>
-        <div class="metric"><b id="mErrors">0</b><span>ошибки</span></div>
-        <div class="metric"><b id="mSkipped">0</b><span>пропуски</span></div>
-        <div class="metric"><b id="mRate">0</b><span>в минуту</span></div>
-        <div class="metric"><b id="mEta">—</b><span>осталось</span></div>
+      <h2>режим ИИ · шпион в компании</h2>
+      <div class="row">
+        <div class="field"><label>стиль общения</label>
+          <select id="aiStyle" onchange="aiStyleChanged()"></select>
+        </div>
+        <div class="field"><label>темперамент</label>
+          <select id="aiTemper" onchange="aiStyleChanged()"></select>
+        </div>
       </div>
-      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
-      <div class="log" id="log" style="margin-top:12px"></div>
+      <div class="row" style="margin-top:8px">
+        <input id="groqKey" type="password" placeholder="ключ Groq (gsk_…, нужен для ИИ)">
+        <button class="btn small" id="btnAI" onclick="aiToggle()">ИИ: выкл</button>
+      </div>
+      <div class="hint" id="aiHint">ИИ вливается в чат как живой человек: отвечает не на каждое сообщение, помнит людей, коверкает ники и пишет без вылизанной пунктуации. Смена стиля применяется при следующем включении ИИ.</div>
     </section>
   </div>
 </main>

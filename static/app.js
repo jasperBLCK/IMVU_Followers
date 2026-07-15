@@ -1,4 +1,12 @@
 const $ = (id) => document.getElementById(id);
+const PAGES = ["pageMain", "pageFollow", "pageRoom"];
+
+function showPage(id) {
+  PAGES.forEach((p) => $(p).classList.toggle("hidden", p !== id));
+  document.querySelectorAll("#tabs .tab").forEach((t) => {
+    t.classList.toggle("active", t.dataset.page === id);
+  });
+}
 const JOB_FIELDS = ["target_id", "max_follows", "follow_delay", "unfollow_delay"];
 let ROLE = null;
 
@@ -67,6 +75,7 @@ async function init() {
     $("profileCard").classList.remove("hidden");
     $("exceptionsCard").classList.remove("hidden");
     $("userPanel").classList.remove("hidden");
+    document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.remove("hidden"));
     if (me.profile) showMe(me.profile);
     $("whoami").textContent = me.username ? "@" + me.username : "";
     loadSettings();
@@ -433,9 +442,28 @@ function renderRecent(list) {
     .join("");
 }
 
+function fillSelect(sel, options, value) {
+  sel.innerHTML = Object.entries(options || {})
+    .map(([k, label]) => '<option value="' + esc(k) + '">' + esc(label) + "</option>")
+    .join("");
+  if (value) sel.value = value;
+}
+
 async function loadRecentRooms() {
   const r = await api("/api/room/recent");
-  if (r.ok) renderRecent(r.recent);
+  if (!r.ok) return;
+  renderRecent(r.recent);
+  fillSelect($("aiStyle"), r.styles, r.ai_style);
+  fillSelect($("aiTemper"), r.tempers, r.ai_temper);
+}
+
+async function aiStyleChanged() {
+  if (AI_ON) return; // применится при следующем включении
+  await api("/api/room/ai", {
+    enabled: false,
+    style: $("aiStyle").value,
+    temper: $("aiTemper").value,
+  });
 }
 
 function joinRecent(room) {
@@ -498,7 +526,12 @@ function setAIState(on) {
 
 async function aiToggle() {
   const key = $("groqKey").value.trim();
-  const r = await api("/api/room/ai", { enabled: !AI_ON, key });
+  const r = await api("/api/room/ai", {
+    enabled: !AI_ON,
+    key,
+    style: $("aiStyle").value,
+    temper: $("aiTemper").value,
+  });
   if (!r.ok) { toast("ИИ", r.error, true); return; }
   $("groqKey").value = "";
   setAIState(!!r.ai);

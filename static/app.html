@@ -172,6 +172,9 @@
     <section class="card">
       <h2>режим ИИ · шпион в компании</h2>
       <div class="row">
+        <div class="field"><label>модель</label>
+          <select id="aiProvider" onchange="aiProviderChanged()"></select>
+        </div>
         <div class="field"><label>стиль общения</label>
           <select id="aiStyle" onchange="aiStyleChanged()"></select>
         </div>
@@ -180,10 +183,10 @@
         </div>
       </div>
       <div class="row" style="margin-top:8px">
-        <input id="groqKey" type="password" placeholder="ключ Groq (gsk_…, нужен для ИИ)">
+        <input id="aiKey" type="password" placeholder="ключ API">
         <button class="btn small" id="btnAI" onclick="aiToggle()">ИИ: выкл</button>
       </div>
-      <div class="hint" id="aiHint">ИИ вливается в чат как живой человек: отвечает не на каждое сообщение, помнит людей, коверкает ники и пишет без вылизанной пунктуации. Смена стиля применяется при следующем включении ИИ.</div>
+      <div class="hint" id="aiHint">ИИ вливается в чат как живой человек: отвечает не на каждое сообщение, коверкает ники и пишет без вылизанной пунктуации. Ключ сохраняется для выбранной модели и переживает перезапуск — вводить заново не нужно. Смена стиля/модели применяется при следующем включении ИИ.</div>
     </section>
   </div>
 </main>

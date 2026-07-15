@@ -30,8 +30,10 @@ from flask import (
 )
 
 from ai_chat import (
+    DEFAULT_PROVIDER,
     DEFAULT_STYLE,
     DEFAULT_TEMPER,
+    PROVIDERS,
     STYLES,
     TEMPERS,
     AIChatError,
@@ -55,6 +57,8 @@ DEFAULT_SETTINGS = {
     "unfollow_delay": 0.3,
     "exceptions": [],  # [{"id": "123", "name": "Alice"}]
     "groq_api_key": "",
+    "anthropic_api_key": "",
+    "ai_provider": DEFAULT_PROVIDER,
     "ai_style": DEFAULT_STYLE,
     "ai_temper": DEFAULT_TEMPER,
     "recent_rooms": [],  # [{"room": "room-1-2", "name": "..."}]
@@ -768,8 +772,11 @@ def api_room_recent(ctx):
             "ok": True,
             "recent": settings.get("recent_rooms", []),
             "has_groq_key": bool(settings.get("groq_api_key")),
+            "has_anthropic_key": bool(settings.get("anthropic_api_key")),
+            "ai_provider": settings.get("ai_provider", DEFAULT_PROVIDER),
             "ai_style": settings.get("ai_style", DEFAULT_STYLE),
             "ai_temper": settings.get("ai_temper", DEFAULT_TEMPER),
+            "providers": {k: v["label"] for k, v in PROVIDERS.items()},
             "styles": {k: v["label"] for k, v in STYLES.items()},
             "tempers": {k: v["label"] for k, v in TEMPERS.items()},
         }
@@ -851,12 +858,19 @@ def api_room_ai(ctx):
     body = request.get_json(force=True) or {}
     enabled = bool(body.get("enabled"))
     key = (body.get("key") or "").strip()
+    provider = (body.get("provider") or "").strip()
     style = (body.get("style") or "").strip()
     temper = (body.get("temper") or "").strip()
     settings = load_settings()
     changed = False
+    if provider in PROVIDERS:
+        settings["ai_provider"] = provider
+        changed = True
+    active = settings.get("ai_provider", DEFAULT_PROVIDER)
+    if active not in PROVIDERS:
+        active = DEFAULT_PROVIDER
     if key:
-        settings["groq_api_key"] = key
+        settings[PROVIDERS[active]["key_field"]] = key
         changed = True
     if style in STYLES:
         settings["ai_style"] = style
@@ -872,9 +886,12 @@ def api_room_ai(ctx):
     chat = ctx.get("chat")
     if not chat or not chat.is_alive():
         return jsonify({"ok": False, "error": "Сначала войдите в комнату"}), 400
-    api_key = settings.get("groq_api_key", "")
+    api_key = settings.get(PROVIDERS[active]["key_field"], "")
     if not api_key:
-        return jsonify({"ok": False, "error": "Добавьте ключ Groq"}), 400
+        return jsonify(
+            {"ok": False,
+             "error": f"Добавьте ключ для {PROVIDERS[active]['label']}"}
+        ), 400
     _stop_ai(ctx)
     try:
         ai = AIChatter(
@@ -885,6 +902,7 @@ def api_room_ai(ctx):
             ctx.get("username", ""),
             style=settings.get("ai_style", DEFAULT_STYLE),
             temper=settings.get("ai_temper", DEFAULT_TEMPER),
+            provider=active,
         )
     except AIChatError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400

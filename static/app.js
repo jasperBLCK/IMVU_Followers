@@ -449,18 +449,37 @@ function fillSelect(sel, options, value) {
   if (value) sel.value = value;
 }
 
+let AI_KEYS = { groq: false, anthropic: false };
+
+function updateAIKeyHint() {
+  const p = $("aiProvider").value;
+  const has = !!AI_KEYS[p];
+  $("aiKey").placeholder = has
+    ? "ключ сохранён — вводи только чтобы заменить"
+    : (p === "anthropic" ? "ключ Anthropic (cr_… / sk-ant-…)" : "ключ Groq (gsk_…)");
+}
+
 async function loadRecentRooms() {
   const r = await api("/api/room/recent");
   if (!r.ok) return;
   renderRecent(r.recent);
+  fillSelect($("aiProvider"), r.providers, r.ai_provider);
   fillSelect($("aiStyle"), r.styles, r.ai_style);
   fillSelect($("aiTemper"), r.tempers, r.ai_temper);
+  AI_KEYS = { groq: !!r.has_groq_key, anthropic: !!r.has_anthropic_key };
+  updateAIKeyHint();
+}
+
+async function aiProviderChanged() {
+  updateAIKeyHint();
+  await aiStyleChanged();
 }
 
 async function aiStyleChanged() {
   if (AI_ON) return; // применится при следующем включении
   await api("/api/room/ai", {
     enabled: false,
+    provider: $("aiProvider").value,
     style: $("aiStyle").value,
     temper: $("aiTemper").value,
   });
@@ -525,15 +544,17 @@ function setAIState(on) {
 }
 
 async function aiToggle() {
-  const key = $("groqKey").value.trim();
+  const key = $("aiKey").value.trim();
   const r = await api("/api/room/ai", {
     enabled: !AI_ON,
     key,
+    provider: $("aiProvider").value,
     style: $("aiStyle").value,
     temper: $("aiTemper").value,
   });
   if (!r.ok) { toast("ИИ", r.error, true); return; }
-  $("groqKey").value = "";
+  if (key) { AI_KEYS[$("aiProvider").value] = true; updateAIKeyHint(); }
+  $("aiKey").value = "";
   setAIState(!!r.ai);
   toast(r.ai ? "ИИ включён — отвечает выборочно, как человек" : "ИИ выключен");
 }

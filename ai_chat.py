@@ -20,6 +20,17 @@ import requests
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
 
+ANTHROPIC_URL = "https://api.tkbk.io/api/v1/messages"
+ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
+
+# провайдеры моделей: groq — быстрая llama с памятью-заметками,
+# anthropic — умный Claude без заметок (сам держит контекст всего чата)
+PROVIDERS = {
+    "groq": {"label": "Groq · Llama 3.1 8B", "key_field": "groq_api_key"},
+    "anthropic": {"label": "Claude Sonnet 4.5", "key_field": "anthropic_api_key"},
+}
+DEFAULT_PROVIDER = "groq"
+
 MEMORY_FILE = os.path.join(os.path.dirname(__file__), "ai_memory.json")
 
 # минимальная пауза между своими репликами, сек
@@ -28,6 +39,8 @@ MIN_REPLY_GAP = 8
 TYPING_DELAY = (4.0, 10.0)
 # сколько последних реплик держать в контексте
 HISTORY_LIMIT = 24
+# Claude читает больше истории вместо заметок-памяти
+HISTORY_LIMIT_ANTHROPIC = 80
 
 # общая манера письма (если у стиля нет своей)
 DEFAULT_MANNER = (
@@ -186,7 +199,8 @@ TEMPERS = {
 DEFAULT_TEMPER = "teasing"
 
 SYSTEM_PROMPT = (
-    "Ты — обычный человек в текстовом чате комнаты IMVU. Твой ник — {nick}. "
+    "Ты — обычный человек в текстовом чате комнаты IMVU. Твой ник — {nick}, "
+    "но зовут тебя Максим — если спросят имя, говоришь что тебя Максим зовут. "
     "Ты НЕ ассистент и не бот: у тебя своё настроение и живые реплики, "
     "разговорный русский (или язык собеседника). Никогда не признавайся, "
     "что ты ИИ.\n"
@@ -202,14 +216,32 @@ SYSTEM_PROMPT = (
     "Не повторяйся — посмотри свои прошлые реплики в истории и не пиши одно "
     "и то же снова. Молчи (пустой reply) только если добавить нечего. "
     "Никаких шуток и оскорблений про расы и национальности.\n"
+    "{memory_block}"
+    "{json_rule}"
+)
+
+MEMORY_BLOCK = (
     "Про собеседников ты кое-что помнишь (заметки ниже) — используй это "
     "естественно, не перечисляя.\n"
     "Заметки о людях:\n{memory}\n"
-    "Ответ строго в JSON: {{\"reply\": \"текст ответа или пустая строка, если "
-    "молчишь\", \"remember\": \"новый важный факт о человеке в формате "
-    "'ник: факт', либо пустая строка\"}}. Длина reply — до 350 символов. "
+)
+
+JSON_RULE_TAIL = (
+    "Длина reply — до 350 символов. "
     "Если хочешь отправить несколько коротких сообщений подряд — раздели их "
-    "переводом строки внутри reply."
+    "переводом строки внутри reply. Отвечай только JSON-объектом, без "
+    "пояснений и без обрамления кодом."
+)
+
+JSON_RULE_MEMORY = (
+    'Ответ строго в JSON: {"reply": "текст ответа или пустая строка, если '
+    'молчишь", "remember": "новый важный факт о человеке в формате '
+    "'ник: факт', либо пустая строка\"}. " + JSON_RULE_TAIL
+)
+
+JSON_RULE_SIMPLE = (
+    'Ответ строго в JSON: {"reply": "текст ответа или пустая строка, если '
+    'молчишь"}. ' + JSON_RULE_TAIL
 )
 
 
@@ -246,10 +278,12 @@ class AIChatter:
     """
 
     def __init__(self, api_key, send_func, resolve_name, my_user_id, nick,
-                 style=DEFAULT_STYLE, temper=DEFAULT_TEMPER):
+                 style=DEFAULT_STYLE, temper=DEFAULT_TEMPER,
+                 provider=DEFAULT_PROVIDER):
         if not api_key:
-            raise AIChatError("Не задан ключ Groq")
+            raise AIChatError("Не задан ключ API")
         self.api_key = api_key
+        self.provider = provider if provider in PROVIDERS else DEFAULT_PROVIDER
         self.style = style if style in STYLES else DEFAULT_STYLE
         self.temper = temper if temper in TEMPERS else DEFAULT_TEMPER
         self.send_func = send_func
@@ -297,7 +331,9 @@ class AIChatter:
                 break
             name = self.resolve_name(msg.user_id)
             self.history.append((name, msg.text))
-            self.history = self.history[-HISTORY_LIMIT:]
+            limit = (HISTORY_LIMIT_ANTHROPIC if self.provider == "anthropic"
+                     else HISTORY_LIMIT)
+            self.history = self.history[-limit:]
             if time.time() - self.last_reply_ts < MIN_REPLY_GAP:
                 continue
             try:
@@ -350,34 +386,61 @@ class AIChatter:
                 lines.append(f"- {note}")
         return "\n".join(lines[-40:]) or "- пока ничего"
 
-    def _think(self):
+    def _system_prompt(self):
+        use_memory = self.provider != "anthropic"
+        return SYSTEM_PROMPT.format(
+            nick=self.nick,
+            persona=STYLES[self.style]["prompt"],
+            temper=TEMPERS[self.temper]["prompt"],
+            manner=STYLES[self.style].get("manner", DEFAULT_MANNER),
+            memory_block=(
+                MEMORY_BLOCK.format(memory=self._memory_text())
+                if use_memory else ""
+            ),
+            json_rule=JSON_RULE_MEMORY if use_memory else JSON_RULE_SIMPLE,
+        )
+
+    def _dialog_messages(self):
         chat_lines = "\n".join(f"{n}: {t}" for n, t in self.history)
+        messages = []
+        for user_text, assistant_json in STYLES[self.style].get("fewshot", []):
+            messages.append({"role": "user", "content": user_text})
+            messages.append({"role": "assistant", "content": assistant_json})
+        messages.append(
+            {"role": "user", "content": "Последние реплики чата:\n" + chat_lines}
+        )
+        return messages
+
+    def _think(self):
+        if self.provider == "anthropic":
+            content = self._ask_anthropic()
+        else:
+            content = self._ask_groq()
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.strip("`")
+            if content.startswith("json"):
+                content = content[4:]
+        try:
+            data = json.loads(content)
+        except ValueError:
+            raise AIChatError("Модель вернула неожиданный ответ")
+        reply = str(data.get("reply", "") or "").strip()[:350]
+        remember = ""
+        if self.provider != "anthropic":
+            remember = str(data.get("remember", "") or "").strip()[:200]
+        return reply, remember
+
+    def _ask_groq(self):
         payload = {
             "model": GROQ_MODEL,
             "temperature": 0.9,
             "max_tokens": 400,
             "response_format": {"type": "json_object"},
             "messages": [
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT.format(
-                        nick=self.nick,
-                        persona=STYLES[self.style]["prompt"],
-                        temper=TEMPERS[self.temper]["prompt"],
-                        manner=STYLES[self.style].get("manner", DEFAULT_MANNER),
-                        memory=self._memory_text(),
-                    ),
-                },
-            ],
+                {"role": "system", "content": self._system_prompt()},
+            ] + self._dialog_messages(),
         }
-        for user_text, assistant_json in STYLES[self.style].get("fewshot", []):
-            payload["messages"].append({"role": "user", "content": user_text})
-            payload["messages"].append(
-                {"role": "assistant", "content": assistant_json}
-            )
-        payload["messages"].append(
-            {"role": "user", "content": "Последние реплики чата:\n" + chat_lines}
-        )
         try:
             resp = requests.post(
                 GROQ_URL,
@@ -390,10 +453,35 @@ class AIChatter:
         if resp.status_code != 200:
             raise AIChatError(f"Groq HTTP {resp.status_code}: {resp.text[:200]}")
         try:
-            content = resp.json()["choices"][0]["message"]["content"]
-            data = json.loads(content)
+            return resp.json()["choices"][0]["message"]["content"]
         except (ValueError, KeyError, IndexError):
             raise AIChatError("Groq вернул неожиданный ответ")
-        reply = str(data.get("reply", "") or "").strip()[:350]
-        remember = str(data.get("remember", "") or "").strip()[:200]
-        return reply, remember
+
+    def _ask_anthropic(self):
+        payload = {
+            "model": ANTHROPIC_MODEL,
+            "max_tokens": 400,
+            "temperature": 0.9,
+            "system": self._system_prompt(),
+            "messages": self._dialog_messages(),
+        }
+        try:
+            resp = requests.post(
+                ANTHROPIC_URL,
+                json=payload,
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=60,
+            )
+        except requests.RequestException as exc:
+            raise AIChatError(f"Claude недоступен: {exc}")
+        if resp.status_code != 200:
+            raise AIChatError(
+                f"Claude HTTP {resp.status_code}: {resp.text[:200]}"
+            )
+        try:
+            return resp.json()["content"][0]["text"]
+        except (ValueError, KeyError, IndexError):
+            raise AIChatError("Claude вернул неожиданный ответ")

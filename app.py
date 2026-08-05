@@ -504,7 +504,9 @@ def _live_stream_generator():
     """Бесконечный mp3-поток: отдаёт треки плейлиста с текущего места эфира,
     как Icecast-радио — все слушатели получают один и тот же момент."""
     chunk_size = 16384
-    buffer_ahead = 4.0  # секунд аудио вперёд, чтобы плееру было что жевать
+    buffer_ahead = 10.0   # секунд аудио вперёд в устоявшемся режиме
+    initial_burst = 20.0  # стартовый запас при подключении, чтобы плеер не лагал
+    lead = initial_burst
     while True:
         with _live_lock:
             meta = _load_live()
@@ -535,8 +537,9 @@ def _live_stream_generator():
                         break
                     yield data
                     sent += len(data)
-                    ahead = sent / bps - (time.time() - t0) - buffer_ahead
+                    ahead = sent / bps - (time.time() - t0) - lead
                     if ahead > 0:
+                        lead = buffer_ahead  # стартовый запас отдан
                         time.sleep(min(ahead, 1.0))
         except OSError:
             time.sleep(1.0)

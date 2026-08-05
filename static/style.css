@@ -343,6 +343,9 @@ input[type="range"]::-moz-range-thumb {
 }
 input[type="range"]:disabled { opacity: .35; cursor: not-allowed; }
 
+.live-link-row { display: flex; gap: 8px; }
+.live-link-row input { flex: 1; color: var(--cyan); }
+
 .station-list { display: flex; flex-direction: column; gap: 8px; }
 .station {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px;

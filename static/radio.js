@@ -350,6 +350,120 @@ const dz = document.getElementById("dropZone");
   dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
 dz.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
 
+/* ---------- my broadcast ("эфир") — только с Flask-бэкендом ---------- */
+let liveState = null;
+
+function getAudioDuration(file) {
+  return new Promise((res) => {
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    a.preload = "metadata";
+    a.onloadedmetadata = () => { URL.revokeObjectURL(url); res(a.duration); };
+    a.onerror = () => { URL.revokeObjectURL(url); res(0); };
+    a.src = url;
+  });
+}
+
+async function liveRefresh() {
+  const r = await fetch("/api/live");
+  if (!r.ok) throw new Error("no live");
+  liveState = await r.json();
+  renderLive();
+}
+
+function renderLive() {
+  if (!liveState) return;
+  document.getElementById("liveLink").value =
+    location.origin + "/live/" + liveState.token;
+  const on = liveState.on;
+  document.getElementById("btnLiveToggle").textContent = on ? "■ выключить эфир" : "▶ включить эфир";
+  document.getElementById("btnLiveToggle").classList.toggle("danger", on);
+  document.getElementById("liveStatus").textContent =
+    on ? "в эфире · " + liveState.tracks.length + " треков" : "эфир выключен · " + liveState.tracks.length + " треков";
+  const host = document.getElementById("liveTrackList");
+  host.innerHTML = "";
+  liveState.tracks.forEach((t) => {
+    const li = document.createElement("li");
+    li.className = "track";
+    li.style.cursor = "default";
+    const name = document.createElement("span");
+    name.className = "tr-name";
+    name.textContent = t.name;
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "✕";
+    x.onclick = async () => {
+      await fetch("/api/live/track/" + t.id, { method: "DELETE" });
+      liveRefresh();
+    };
+    li.append(name, x);
+    host.appendChild(li);
+  });
+}
+
+async function liveHandleFiles(files) {
+  const fd = new FormData();
+  let n = 0;
+  for (const f of files) {
+    const dur = await getAudioDuration(f);
+    if (!dur) continue;
+    fd.append("files", f);
+    fd.append("durations", String(dur));
+    n++;
+  }
+  document.getElementById("liveFileInput").value = "";
+  if (!n) return toast("аудиофайлы не распознаны", true);
+  toast("загружаю " + n + " треков…");
+  const r = await fetch("/api/live/upload", { method: "POST", body: fd });
+  const j = await r.json();
+  if (!j.ok) return toast(j.error || "ошибка загрузки", true);
+  toast("в эфир добавлено: " + j.added);
+  liveRefresh();
+}
+
+async function liveToggle() {
+  const r = await fetch("/api/live/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ on: !(liveState && liveState.on) }),
+  });
+  const j = await r.json();
+  if (!j.ok) return toast(j.error || "ошибка", true);
+  toast(j.on ? "эфир включён — плейлист пошёл по кругу" : "эфир выключен");
+  liveRefresh();
+}
+
+function copyLiveLink() {
+  const inp = document.getElementById("liveLink");
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(
+    () => toast("ссылка эфира скопирована"),
+    () => document.execCommand("copy"));
+}
+
+async function regenLiveLink() {
+  const r = await fetch("/api/live/regen", { method: "POST" });
+  const j = await r.json();
+  if (j.ok) { toast("новая ссылка эфира создана"); liveRefresh(); }
+}
+
+async function initLive() {
+  try {
+    const me = await fetch("/api/me").then((r) => r.json());
+    if (me.role !== "user") return;
+    await liveRefresh();
+    document.getElementById("liveCard").classList.remove("hidden");
+    const ldz = document.getElementById("liveDropZone");
+    ["dragenter", "dragover"].forEach((ev) =>
+      ldz.addEventListener(ev, (e) => { e.preventDefault(); ldz.classList.add("drag"); }));
+    ["dragleave", "drop"].forEach((ev) =>
+      ldz.addEventListener(ev, (e) => { e.preventDefault(); ldz.classList.remove("drag"); }));
+    ldz.addEventListener("drop", (e) => liveHandleFiles(e.dataTransfer.files));
+  } catch (e) {
+    /* нет бэкенда (GitHub Pages) — карточка эфира остаётся скрытой */
+  }
+}
+
 /* clock */
 setInterval(() => {
   const d = new Date();
@@ -368,4 +482,5 @@ setInterval(() => {
   }
   renderStations();
   refreshTracks().then(updateUI);
+  initLive();
 })();

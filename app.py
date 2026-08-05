@@ -324,6 +324,181 @@ def radio_page():
     return redirect("/static/radio.html")
 
 
+@app.route("/live/<token>")
+def live_page(token):
+    return send_from_directory(STATIC_DIR, "live.html")
+
+
+# --------------------------------------------------------------------------- #
+# Live broadcast ("эфир"): владелец грузит треки, слушатели ловят их по
+# уникальной ссылке синхронно, как настоящее радио.
+# --------------------------------------------------------------------------- #
+LIVE_DIR = os.path.join(os.path.dirname(__file__), "uploads", "live")
+LIVE_META = os.path.join(LIVE_DIR, "live.json")
+ALLOWED_AUDIO_EXT = {".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac"}
+_live_lock = threading.Lock()
+
+
+def _load_live():
+    if os.path.exists(LIVE_META):
+        try:
+            with open(LIVE_META, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError):
+            pass
+    return {"token": secrets.token_urlsafe(8), "on": False, "started_at": 0.0, "tracks": []}
+
+
+def _save_live(meta):
+    os.makedirs(LIVE_DIR, exist_ok=True)
+    with open(LIVE_META, "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2, ensure_ascii=False)
+
+
+def _live_now(meta):
+    """Что играет прямо сейчас: индекс трека и смещение в секундах."""
+    tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
+    total = sum(t["duration"] for t in tracks)
+    if not meta["on"] or not tracks or total <= 0:
+        return None
+    pos = (time.time() - meta["started_at"]) % total
+    for i, t in enumerate(tracks):
+        if pos < t["duration"]:
+            return {"index": i, "offset": round(pos, 3)}
+        pos -= t["duration"]
+    return {"index": 0, "offset": 0.0}
+
+
+def _live_public(meta):
+    tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
+    return {
+        "on": meta["on"],
+        "started_at": meta["started_at"],
+        "server_time": time.time(),
+        "tracks": [{"id": t["id"], "name": t["name"], "duration": t["duration"]} for t in tracks],
+        "now": _live_now(meta),
+    }
+
+
+@app.route("/api/live", methods=["GET"])
+@require_role("user")
+def live_state(ctx):
+    with _live_lock:
+        meta = _load_live()
+    out = _live_public(meta)
+    out.update({"ok": True, "token": meta["token"]})
+    return jsonify(out)
+
+
+@app.route("/api/live/upload", methods=["POST"])
+@require_role("user")
+def live_upload(ctx):
+    files = request.files.getlist("files")
+    durations = request.form.getlist("durations")
+    if not files:
+        return jsonify({"ok": False, "error": "Нет файлов"}), 400
+    os.makedirs(LIVE_DIR, exist_ok=True)
+    with _live_lock:
+        meta = _load_live()
+        added = 0
+        for i, f in enumerate(files):
+            ext = os.path.splitext(f.filename or "")[1].lower()
+            if ext not in ALLOWED_AUDIO_EXT:
+                continue
+            try:
+                duration = float(durations[i])
+            except (IndexError, ValueError):
+                duration = 0.0
+            if duration <= 0:
+                continue
+            tid = secrets.token_hex(8)
+            f.save(os.path.join(LIVE_DIR, tid + ext))
+            meta["tracks"].append(
+                {
+                    "id": tid,
+                    "name": os.path.splitext(os.path.basename(f.filename))[0],
+                    "file": tid + ext,
+                    "duration": round(duration, 3),
+                }
+            )
+            added += 1
+        _save_live(meta)
+    if not added:
+        return jsonify({"ok": False, "error": "Аудиофайлы не распознаны"}), 400
+    return jsonify({"ok": True, "added": added})
+
+
+@app.route("/api/live/track/<tid>", methods=["DELETE"])
+@require_role("user")
+def live_delete_track(ctx, tid):
+    with _live_lock:
+        meta = _load_live()
+        track = next((t for t in meta["tracks"] if t["id"] == tid), None)
+        if not track:
+            return jsonify({"ok": False, "error": "Трек не найден"}), 404
+        meta["tracks"] = [t for t in meta["tracks"] if t["id"] != tid]
+        _save_live(meta)
+    try:
+        os.remove(os.path.join(LIVE_DIR, track["file"]))
+    except OSError:
+        pass
+    return jsonify({"ok": True})
+
+
+@app.route("/api/live/toggle", methods=["POST"])
+@require_role("user")
+def live_toggle(ctx):
+    on = bool((request.get_json(silent=True) or {}).get("on"))
+    with _live_lock:
+        meta = _load_live()
+        if on and not meta["tracks"]:
+            return jsonify({"ok": False, "error": "Сначала загрузи треки"}), 400
+        meta["on"] = on
+        if on:
+            meta["started_at"] = time.time()
+        _save_live(meta)
+    return jsonify({"ok": True, "on": on})
+
+
+@app.route("/api/live/regen", methods=["POST"])
+@require_role("user")
+def live_regen(ctx):
+    with _live_lock:
+        meta = _load_live()
+        meta["token"] = secrets.token_urlsafe(8)
+        _save_live(meta)
+    return jsonify({"ok": True, "token": meta["token"]})
+
+
+def _check_live_token(token):
+    with _live_lock:
+        meta = _load_live()
+    if not secrets.compare_digest(token, meta["token"]):
+        return None
+    return meta
+
+
+@app.route("/api/live/<token>/now", methods=["GET"])
+def live_now_public(token):
+    meta = _check_live_token(token)
+    if meta is None:
+        return jsonify({"ok": False, "error": "Эфир не найден"}), 404
+    out = _live_public(meta)
+    out["ok"] = True
+    return jsonify(out)
+
+
+@app.route("/api/live/<token>/audio/<tid>", methods=["GET"])
+def live_audio(token, tid):
+    meta = _check_live_token(token)
+    if meta is None:
+        return jsonify({"ok": False, "error": "Эфир не найден"}), 404
+    track = next((t for t in meta["tracks"] if t["id"] == tid), None)
+    if not track:
+        return jsonify({"ok": False, "error": "Трек не найден"}), 404
+    return send_from_directory(LIVE_DIR, track["file"], conditional=True)
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #

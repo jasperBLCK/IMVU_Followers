@@ -375,6 +375,8 @@ function renderLive() {
   if (!liveState) return;
   document.getElementById("liveLink").value =
     location.origin + "/live/" + liveState.token;
+  document.getElementById("liveStreamLink").value =
+    location.origin + "/live/" + liveState.token + "/stream";
   const on = liveState.on;
   document.getElementById("btnLiveToggle").textContent = on ? "■ выключить эфир" : "▶ включить эфир";
   document.getElementById("btnLiveToggle").classList.toggle("danger", on);
@@ -438,6 +440,14 @@ function copyLiveLink() {
   inp.select();
   navigator.clipboard.writeText(inp.value).then(
     () => toast("ссылка эфира скопирована"),
+    () => document.execCommand("copy"));
+}
+
+function copyStreamLink() {
+  const inp = document.getElementById("liveStreamLink");
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(
+    () => toast("mp3-ссылка для игры скопирована"),
     () => document.execCommand("copy"));
 }
 

@@ -81,11 +81,16 @@
         <button class="btn cyan small" onclick="copyLiveLink()">копировать</button>
         <button class="btn ghost small" onclick="regenLiveLink()" title="новая ссылка">↻</button>
       </div>
-      <div class="hint">Уникальная ссылка эфира — кидай её кому угодно: все слышат один и тот же момент плейлиста, как настоящее радио.</div>
+      <div class="hint">Ссылка-страница эфира — для браузера: все слышат один и тот же момент плейлиста.</div>
+      <div class="live-link-row" style="margin-top:10px">
+        <input id="liveStreamLink" readonly value="">
+        <button class="btn cyan small" onclick="copyStreamLink()">копировать</button>
+      </div>
+      <div class="hint">mp3-поток эфира — для игры/плееров: вставь эту ссылку как радио — звук врубается сразу, как у настоящих радиостанций.</div>
       <label class="upload-zone" id="liveDropZone" style="margin-top:12px">
         <input type="file" id="liveFileInput" accept="audio/*" multiple onchange="liveHandleFiles(this.files)">
         <div class="uz-icon">📡</div>
-        <div>загрузить песни в эфир (хранятся на сервере)</div>
+        <div>загрузить песни в эфир — только mp3 (хранятся на сервере)</div>
       </label>
       <div class="track-tools">
         <button class="btn small" id="btnLiveToggle" onclick="liveToggle()">▶ включить эфир</button>

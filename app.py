@@ -335,7 +335,8 @@ def live_page(token):
 # --------------------------------------------------------------------------- #
 LIVE_DIR = os.path.join(os.path.dirname(__file__), "uploads", "live")
 LIVE_META = os.path.join(LIVE_DIR, "live.json")
-ALLOWED_AUDIO_EXT = {".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac"}
+# для непрерывного mp3-эфира треки должны быть в mp3
+ALLOWED_AUDIO_EXT = {".mp3"}
 _live_lock = threading.Lock()
 
 
@@ -424,7 +425,7 @@ def live_upload(ctx):
             added += 1
         _save_live(meta)
     if not added:
-        return jsonify({"ok": False, "error": "Аудиофайлы не распознаны"}), 400
+        return jsonify({"ok": False, "error": "Нужны mp3-файлы — эфир стримит mp3"}), 400
     return jsonify({"ok": True, "added": added})
 
 
@@ -497,6 +498,66 @@ def live_audio(token, tid):
     if not track:
         return jsonify({"ok": False, "error": "Трек не найден"}), 404
     return send_from_directory(LIVE_DIR, track["file"], conditional=True)
+
+
+def _live_stream_generator():
+    """Бесконечный mp3-поток: отдаёт треки плейлиста с текущего места эфира,
+    как Icecast-радио — все слушатели получают один и тот же момент."""
+    chunk_size = 16384
+    buffer_ahead = 4.0  # секунд аудио вперёд, чтобы плееру было что жевать
+    while True:
+        with _live_lock:
+            meta = _load_live()
+        now = _live_now(meta)
+        if now is None:
+            time.sleep(1.0)
+            continue
+        tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
+        track = tracks[now["index"]]
+        path = os.path.join(LIVE_DIR, track["file"])
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            time.sleep(1.0)
+            continue
+        bps = size / track["duration"]  # байт в секунду (усреднённый битрейт)
+        start = int(now["offset"] * bps)
+        t0 = time.time()
+        # момент, когда этот трек закончится в эфире
+        track_ends_at = t0 + max(track["duration"] - now["offset"], 0.0)
+        sent = 0
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(min(start, max(size - 1, 0)))
+                while True:
+                    data = fh.read(chunk_size)
+                    if not data:
+                        break
+                    yield data
+                    sent += len(data)
+                    ahead = sent / bps - (time.time() - t0) - buffer_ahead
+                    if ahead > 0:
+                        time.sleep(min(ahead, 1.0))
+        except OSError:
+            time.sleep(1.0)
+            continue
+        # файл отдан раньше конца трека (буфер) — ждём, пока эфир перейдёт
+        # на следующий трек (небольшой запас против зацикливания на стыке)
+        time.sleep(max(track_ends_at - time.time() + 0.05, 0.05))
+
+
+@app.route("/live/<token>/stream", methods=["GET"])
+def live_stream(token):
+    meta = _check_live_token(token)
+    if meta is None:
+        return jsonify({"ok": False, "error": "Эфир не найден"}), 404
+    resp = app.response_class(_live_stream_generator(), mimetype="audio/mpeg")
+    resp.headers["Cache-Control"] = "no-cache, no-store"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Accept-Ranges"] = "none"
+    resp.headers["icy-name"] = "IMVU_NET live"
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 # --------------------------------------------------------------------------- #

@@ -318,6 +318,12 @@ def login_page():
     return send_from_directory(STATIC_DIR, "login.html")
 
 
+@app.route("/radio")
+def radio_page():
+    # radio.html uses relative asset paths so the same page works on GitHub Pages
+    return redirect("/static/radio.html")
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #

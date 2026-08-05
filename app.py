@@ -404,15 +404,22 @@ def live_upload(ctx):
     with _live_lock:
         meta = _load_live()
         added = 0
+        rejected = []
         for i, f in enumerate(files):
-            ext = os.path.splitext(f.filename or "")[1].lower()
+            name = os.path.basename(f.filename or "")
+            ext = os.path.splitext(name)[1].lower()
             if ext not in ALLOWED_AUDIO_EXT:
+                rejected.append(name + " — нужен mp3")
+                continue
+            if not _is_real_mp3(f.stream):
+                rejected.append(name + " — внутри не mp3 (переименованный файл?), сконвертируй в настоящий mp3")
                 continue
             try:
                 duration = float(durations[i])
             except (IndexError, ValueError):
                 duration = 0.0
             if not math.isfinite(duration) or duration <= 0:
+                rejected.append(name + " — не определилась длительность")
                 continue
             tid = secrets.token_hex(8)
             f.save(os.path.join(LIVE_DIR, tid + ext))
@@ -427,8 +434,8 @@ def live_upload(ctx):
             added += 1
         _save_live(meta)
     if not added:
-        return jsonify({"ok": False, "error": "Нужны mp3-файлы — эфир стримит mp3"}), 400
-    return jsonify({"ok": True, "added": added})
+        return jsonify({"ok": False, "error": "; ".join(rejected) or "Нужны mp3-файлы"}), 400
+    return jsonify({"ok": True, "added": added, "rejected": rejected})
 
 
 @app.route("/api/live/track/<tid>", methods=["DELETE"])
@@ -545,12 +552,66 @@ _SILENT_MP3 = base64.b64decode(
 _SILENT_SECS = 0.13
 
 
+# битрейты (кбит/с) для MPEG1 / MPEG2(2.5) Layer III
+_MP3_BITRATES_V1 = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0)
+_MP3_BITRATES_V2 = (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0)
+_MP3_RATES = {3: (44100, 48000, 32000), 2: (22050, 24000, 16000), 0: (11025, 12000, 8000)}
+
+
+def _mp3_frame_len(data, i):
+    """Длина валидного mp3-фрейма (Layer III) с позиции i, иначе 0."""
+    if i + 4 > len(data) or data[i] != 0xFF or (data[i + 1] & 0xE0) != 0xE0:
+        return 0
+    version = (data[i + 1] >> 3) & 0x03   # 3=MPEG1, 2=MPEG2, 0=MPEG2.5
+    layer = (data[i + 1] >> 1) & 0x03     # 1 = Layer III
+    if version == 1 or layer != 1:
+        return 0
+    br_idx = (data[i + 2] >> 4) & 0x0F
+    sr_idx = (data[i + 2] >> 2) & 0x03
+    if br_idx in (0, 15) or sr_idx == 3:
+        return 0
+    bitrate = (_MP3_BITRATES_V1 if version == 3 else _MP3_BITRATES_V2)[br_idx] * 1000
+    rate = _MP3_RATES[version][sr_idx]
+    padding = (data[i + 2] >> 1) & 0x01
+    samples = 1152 if version == 3 else 576
+    return samples * bitrate // (8 * rate) + padding
+
+
 def _mp3_frame_align(data):
-    """Сдвиг до ближайшего начала mp3-фрейма, чтобы не начинать с обрезка."""
-    for i in range(len(data) - 1):
-        if data[i] == 0xFF and (data[i + 1] & 0xE0) == 0xE0:
+    """Сдвиг до начала настоящего mp3-фрейма: заголовок валиден и за фреймом
+    следует ещё один валидный заголовок (защита от ложного sync в аудиоданных)."""
+    for i in range(len(data) - 4):
+        ln = _mp3_frame_len(data, i)
+        if not ln:
+            continue
+        j = i + ln
+        if j + 4 > len(data) or _mp3_frame_len(data, j):
             return data[i:]
     return data
+
+
+def _is_real_mp3(fh):
+    """Проверка содержимого: это настоящий mp3, а не переименованный m4a/webm.
+    Пропускает ID3-тег и ищет два подряд валидных заголовка фрейма."""
+    head = fh.read(10)
+    skip = 0
+    if head[:3] == b"ID3" and len(head) == 10:
+        skip = (
+            (head[6] & 0x7F) << 21
+            | (head[7] & 0x7F) << 14
+            | (head[8] & 0x7F) << 7
+            | (head[9] & 0x7F)
+        ) + 10
+        fh.seek(skip)
+        data = fh.read(65536)
+    else:
+        data = head + fh.read(65536)
+    fh.seek(0)
+    for i in range(len(data) - 4):
+        ln = _mp3_frame_len(data, i)
+        if ln and (i + ln + 4 > len(data) or _mp3_frame_len(data, i + ln)):
+            return True
+    return False
 
 
 def _live_stream_generator():

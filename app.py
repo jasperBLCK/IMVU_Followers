@@ -13,6 +13,7 @@ like a terminal. Run with ``python app.py`` then open http://localhost:5000.
 """
 
 import json
+import math
 import os
 import secrets
 import threading
@@ -410,7 +411,7 @@ def live_upload(ctx):
                 duration = float(durations[i])
             except (IndexError, ValueError):
                 duration = 0.0
-            if duration <= 0:
+            if not math.isfinite(duration) or duration <= 0:
                 continue
             tid = secrets.token_hex(8)
             f.save(os.path.join(LIVE_DIR, tid + ext))
@@ -1158,4 +1159,4 @@ def api_room_ai(ctx):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, threaded=True)

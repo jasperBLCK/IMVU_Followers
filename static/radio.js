@@ -357,9 +357,19 @@ function getAudioDuration(file) {
   return new Promise((res) => {
     const url = URL.createObjectURL(file);
     const a = new Audio();
+    const done = (d) => { URL.revokeObjectURL(url); res(isFinite(d) && d > 0 ? d : 0); };
     a.preload = "metadata";
-    a.onloadedmetadata = () => { URL.revokeObjectURL(url); res(a.duration); };
-    a.onerror = () => { URL.revokeObjectURL(url); res(0); };
+    a.onloadedmetadata = () => {
+      if (isFinite(a.duration) && a.duration > 0) return done(a.duration);
+      // у некоторых mp3 без заголовка длительность = Infinity —
+      // семка в конец заставляет браузер вычислить реальную
+      a.ondurationchange = () => {
+        if (isFinite(a.duration) && a.duration > 0) done(a.duration);
+      };
+      a.currentTime = 1e7;
+      setTimeout(() => done(a.duration), 3000);
+    };
+    a.onerror = () => done(0);
     a.src = url;
   });
 }
@@ -407,19 +417,24 @@ async function liveHandleFiles(files) {
   const fd = new FormData();
   let n = 0;
   for (const f of files) {
+    if (!/\.mp3$/i.test(f.name)) { toast(f.name + " — нужен mp3", true); continue; }
     const dur = await getAudioDuration(f);
-    if (!dur) continue;
+    if (!dur) { toast(f.name + " — не смог прочитать длительность", true); continue; }
     fd.append("files", f);
     fd.append("durations", String(dur));
     n++;
   }
   document.getElementById("liveFileInput").value = "";
-  if (!n) return toast("аудиофайлы не распознаны", true);
+  if (!n) return;
   toast("загружаю " + n + " треков…");
-  const r = await fetch("/api/live/upload", { method: "POST", body: fd });
-  const j = await r.json();
-  if (!j.ok) return toast(j.error || "ошибка загрузки", true);
-  toast("в эфир добавлено: " + j.added);
+  try {
+    const r = await fetch("/api/live/upload", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!j.ok) return toast(j.error || "ошибка загрузки (" + r.status + ")", true);
+    toast("в эфир добавлено: " + j.added);
+  } catch (e) {
+    return toast("загрузка оборвалась — проверь сеть и размер файла", true);
+  }
   liveRefresh();
 }
 

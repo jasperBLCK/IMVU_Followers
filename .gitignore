@@ -2,6 +2,9 @@
 settings.json
 ai_memory.json
 
+# uploaded broadcast tracks
+uploads/
+
 # python
 __pycache__/
 *.pyc

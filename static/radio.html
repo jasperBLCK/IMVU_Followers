@@ -73,6 +73,27 @@
   </div>
 
   <div class="col">
+    <!-- my broadcast (needs Flask backend + account login) -->
+    <section class="card hidden" id="liveCard">
+      <h2>мой эфир · трансляция</h2>
+      <div class="live-link-row">
+        <input id="liveLink" readonly value="">
+        <button class="btn cyan small" onclick="copyLiveLink()">копировать</button>
+        <button class="btn ghost small" onclick="regenLiveLink()" title="новая ссылка">↻</button>
+      </div>
+      <div class="hint">Уникальная ссылка эфира — кидай её кому угодно: все слышат один и тот же момент плейлиста, как настоящее радио.</div>
+      <label class="upload-zone" id="liveDropZone" style="margin-top:12px">
+        <input type="file" id="liveFileInput" accept="audio/*" multiple onchange="liveHandleFiles(this.files)">
+        <div class="uz-icon">📡</div>
+        <div>загрузить песни в эфир (хранятся на сервере)</div>
+      </label>
+      <div class="track-tools">
+        <button class="btn small" id="btnLiveToggle" onclick="liveToggle()">▶ включить эфир</button>
+        <span class="muted" id="liveStatus">эфир выключен</span>
+      </div>
+      <ol class="track-list" id="liveTrackList"></ol>
+    </section>
+
     <!-- my tracks -->
     <section class="card">
       <h2>мои треки · своё радио</h2>

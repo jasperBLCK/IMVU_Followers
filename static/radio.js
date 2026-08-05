@@ -431,6 +431,7 @@ async function liveHandleFiles(files) {
     const r = await fetch("/api/live/upload", { method: "POST", body: fd });
     const j = await r.json();
     if (!j.ok) return toast(j.error || "ошибка загрузки (" + r.status + ")", true);
+    (j.rejected || []).forEach((m) => toast(m, true));
     toast("в эфир добавлено: " + j.added);
   } catch (e) {
     return toast("загрузка оборвалась — проверь сеть и размер файла", true);

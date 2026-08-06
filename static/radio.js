@@ -34,7 +34,7 @@ function renderLive() {
     location.origin + "/live/" + liveState.token + "/stream";
   const on = liveState.on;
   const btn = document.getElementById("btnLiveToggle");
-  btn.textContent = on ? "■ выключить эфир" : "▶ включить эфир";
+  btn.textContent = on ? "Выключить эфир" : "Включить эфир";
   btn.classList.toggle("danger", on);
   document.getElementById("onAirBadge").textContent = on ? "on air" : "off air";
   document.getElementById("onAirBadge").classList.toggle("ok", on);
@@ -163,9 +163,8 @@ async function init() {
 }
 
 setInterval(() => {
-  const d = new Date();
-  document.getElementById("clock").innerHTML =
-    "// " + d.toLocaleTimeString("ru-RU") + '<span class="blink">_</span>';
+  document.getElementById("clock").textContent =
+    new Date().toLocaleTimeString("ru-RU");
 }, 1000);
 
 init();

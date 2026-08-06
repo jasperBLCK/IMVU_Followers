@@ -147,7 +147,7 @@ function toggleListen() {
 }
 
 function updateUI() {
-  document.getElementById("btnListen").textContent = listening ? "❚❚ отключиться" : "▶ слушать эфир";
+  document.getElementById("btnListen").textContent = listening ? "Отключиться" : "Слушать эфир";
   updateBadge();
 }
 
@@ -162,9 +162,8 @@ audio.addEventListener("play", updateBadge);
 audio.addEventListener("pause", updateBadge);
 
 setInterval(() => {
-  const d = new Date();
-  document.getElementById("clock").innerHTML =
-    "// " + d.toLocaleTimeString("ru-RU") + '<span class="blink">_</span>';
+  document.getElementById("clock").textContent =
+    new Date().toLocaleTimeString("ru-RU");
 }, 1000);
 
 (function init() {

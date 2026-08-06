@@ -3,29 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IMVU_NET // прямой эфир</title>
+<title>IMVU_NET — прямой эфир</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<canvas id="matrix"></canvas>
 <div class="toast-host" id="toastHost"></div>
 
 <header class="topbar">
   <div class="brand">
     <span class="logo">IMVU_NET</span>
-    <span class="sub" id="clock">// прямой эфир<span class="blink">_</span></span>
+    <span class="sub" id="clock">прямой эфир</span>
   </div>
   <div class="session-box">
     <span class="badge" id="liveBadge">offline</span>
   </div>
 </header>
 
-<main class="grid page" style="grid-template-columns: 1fr; max-width: 640px; margin: 0 auto;">
+<main class="live-page">
   <div class="col">
-    <section class="card">
-      <h2>эфир</h2>
+    <section class="card" style="margin-bottom:14px">
+      <h2>Эфир</h2>
       <div class="radio-player">
         <div class="rp-vis" id="rpVis">
           <span></span><span></span><span></span><span></span><span></span>
@@ -37,17 +36,17 @@
           <div class="rp-sub" id="npSub">&nbsp;</div>
         </div>
         <div class="rp-controls">
-          <button class="btn" id="btnListen" onclick="toggleListen()">▶ слушать эфир</button>
+          <button class="btn primary" id="btnListen" onclick="toggleListen()">Слушать эфир</button>
         </div>
         <div class="rp-volume">
-          <span>vol</span>
+          <span>громкость</span>
           <input type="range" id="vol" min="0" max="100" value="80" oninput="setVolume(this.value)">
         </div>
       </div>
     </section>
 
     <section class="card">
-      <h2>плейлист эфира</h2>
+      <h2>Плейлист эфира</h2>
       <ol class="track-list" id="trackList"></ol>
     </section>
   </div>
@@ -55,7 +54,6 @@
 
 <footer class="foot">IMVU_NET · прямой эфир · все слушатели слышат одно и то же</footer>
 
-<script src="/static/matrix.js"></script>
 <script src="/static/live.js"></script>
 </body>
 </html>

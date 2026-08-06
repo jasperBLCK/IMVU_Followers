@@ -294,6 +294,23 @@ select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 2px 
 
 .foot { text-align: center; color: var(--muted); font-size: 11px; padding: 10px 20px 26px; }
 
+/* ---------- live page (радио) ---------- */
+.live-page {
+  position: relative; z-index: 3;
+  max-width: 720px; margin: 0 auto; padding: 24px 20px;
+}
+.live-card { width: 100%; }
+.live-links { margin-bottom: 16px; }
+.badge.ok { color: var(--cyan); border-color: rgba(25,240,255,.4); box-shadow: 0 0 10px rgba(25,240,255,.25); }
+.upload-progress { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.upload-bar {
+  flex: 1; height: 8px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.upload-bar > div {
+  height: 100%; width: 0; background: var(--cyan);
+  box-shadow: 0 0 10px rgba(25,240,255,.5); transition: width .2s;
+}
+
 /* top-5 subscriptions */
 .top-list { list-style: none; counter-reset: rank; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .top-item { counter-increment: rank; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,46,77,.04); }

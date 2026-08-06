@@ -14,7 +14,6 @@ like a terminal. Run with ``python app.py`` then open http://localhost:5000.
 
 import base64
 import json
-import math
 import os
 import secrets
 import threading
@@ -397,7 +396,6 @@ def live_state(ctx):
 @require_role("user")
 def live_upload(ctx):
     files = request.files.getlist("files")
-    durations = request.form.getlist("durations")
     if not files:
         return jsonify({"ok": False, "error": "Нет файлов"}), 400
     os.makedirs(LIVE_DIR, exist_ok=True)
@@ -405,7 +403,7 @@ def live_upload(ctx):
         meta = _load_live()
         added = 0
         rejected = []
-        for i, f in enumerate(files):
+        for f in files:
             name = os.path.basename(f.filename or "")
             ext = os.path.splitext(name)[1].lower()
             if ext not in ALLOWED_AUDIO_EXT:
@@ -414,19 +412,18 @@ def live_upload(ctx):
             if not _is_real_mp3(f.stream):
                 rejected.append(name + " — внутри не mp3 (переименованный файл?), сконвертируй в настоящий mp3")
                 continue
-            try:
-                duration = float(durations[i])
-            except (IndexError, ValueError):
-                duration = 0.0
-            if not math.isfinite(duration) or duration <= 0:
+            tid = secrets.token_hex(8)
+            path = os.path.join(LIVE_DIR, tid + ext)
+            f.save(path)
+            duration = _mp3_duration(path)
+            if not duration:
+                os.remove(path)
                 rejected.append(name + " — не определилась длительность")
                 continue
-            tid = secrets.token_hex(8)
-            f.save(os.path.join(LIVE_DIR, tid + ext))
             meta["tracks"].append(
                 {
                     "id": tid,
-                    "name": os.path.splitext(os.path.basename(f.filename))[0],
+                    "name": os.path.splitext(name)[0],
                     "file": tid + ext,
                     "duration": round(duration, 3),
                 }
@@ -612,6 +609,36 @@ def _is_real_mp3(fh):
         if ln and (i + ln + 4 > len(data) or _mp3_frame_len(data, i + ln)):
             return True
     return False
+
+
+def _mp3_duration(path):
+    """Длительность mp3 в секундах: проход по фреймам (работает и для VBR)."""
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return 0.0
+    i = 0
+    if data[:3] == b"ID3" and len(data) > 10:
+        i = (
+            (data[6] & 0x7F) << 21
+            | (data[7] & 0x7F) << 14
+            | (data[8] & 0x7F) << 7
+            | (data[9] & 0x7F)
+        ) + 10
+    seconds = 0.0
+    n = len(data)
+    while i < n - 4:
+        ln = _mp3_frame_len(data, i)
+        if not ln:
+            i += 1  # ресинк после мусора между фреймами
+            continue
+        version = (data[i + 1] >> 3) & 0x03
+        sr_idx = (data[i + 2] >> 2) & 0x03
+        rate = _MP3_RATES[version][sr_idx]
+        seconds += (1152 if version == 3 else 576) / rate
+        i += ln
+    return seconds
 
 
 def _live_stream_generator():

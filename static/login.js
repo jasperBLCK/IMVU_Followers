@@ -10,25 +10,6 @@ async function api(path, body) {
   return r.json();
 }
 
-// boot sequence typewriter
-const BOOT = [
-  "[ booting imvu_net kernel v2.0 ]",
-  "tls handshake .......... OK",
-  "api.imvu.com ........... ONLINE",
-  "select access level _",
-];
-(function bootSeq() {
-  const el = $("boot");
-  let i = 0;
-  (function next() {
-    if (i >= BOOT.length) return;
-    const cls = BOOT[i].includes("OK") || BOOT[i].includes("ONLINE") ? "ok" : "";
-    el.innerHTML += `<span class="${cls}">${BOOT[i]}</span>\n`;
-    i++;
-    setTimeout(next, 350);
-  })();
-})();
-
 function switchTab(which) {
   const acc = which === "account";
   $("tabAccount").classList.toggle("active", acc);
@@ -53,7 +34,7 @@ function cancel2fa() {
   show2fa(false);
   const btn = $("btnLogin");
   btn.disabled = false;
-  btn.textContent = "[ войти в систему ]";
+  btn.textContent = "Войти";
 }
 
 function setErr(msg) {
@@ -67,12 +48,8 @@ async function loginAccount() {
   if (!username || !password) return setErr("введите логин и пароль");
   const btn = $("btnLogin");
   btn.disabled = true;
-  btn.textContent = "[ авторизация... ]";
-  const j = await api("/api/auth/account", {
-    username,
-    password,
-    remember: $("remember").checked,
-  });
+  btn.textContent = "Авторизация…";
+  const j = await api("/api/auth/account", { username, password });
   if (j.ok) {
     sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
     location.href = "/";
@@ -81,9 +58,9 @@ async function loginAccount() {
     if (j.email) $("email2fa").textContent = j.email;
     show2fa(true);
   } else {
-    setErr("ACCESS DENIED: " + (j.error || "ошибка входа"));
+    setErr(j.error || "ошибка входа");
     btn.disabled = false;
-    btn.textContent = "[ войти в систему ]";
+    btn.textContent = "Войти";
   }
 }
 
@@ -93,10 +70,10 @@ async function submit2fa() {
   if (!code) return setErr("введите код из письма");
   const btn = $("btn2fa");
   btn.disabled = true;
-  btn.textContent = "[ проверка... ]";
+  btn.textContent = "Проверка…";
   const j = await api("/api/auth/2fa", { code });
   btn.disabled = false;
-  btn.textContent = "[ подтвердить код ]";
+  btn.textContent = "Подтвердить код";
   if (j.ok) {
     sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
     location.href = "/";
@@ -104,7 +81,7 @@ async function submit2fa() {
     setErr(j.error || "сессия истекла — войдите заново");
     cancel2fa();
   } else {
-    setErr("ACCESS DENIED: " + (j.error || "неверный код"));
+    setErr(j.error || "неверный код");
   }
 }
 
@@ -112,10 +89,10 @@ async function resend2fa() {
   setErr("");
   const btn = $("btnResend");
   btn.disabled = true;
-  btn.textContent = "[ отправка... ]";
+  btn.textContent = "Отправка…";
   const j = await api("/api/auth/2fa/resend", {});
   btn.disabled = false;
-  btn.textContent = "[ отправить код повторно ]";
+  btn.textContent = "Отправить код повторно";
   if (j.ok && j.profile) {
     sessionStorage.setItem("just_logged_in", JSON.stringify(j.profile || {}));
     location.href = "/";
@@ -126,7 +103,7 @@ async function resend2fa() {
     setErr(j.error || "сессия истекла — войдите заново");
     cancel2fa();
   } else {
-    setErr("ACCESS DENIED: " + (j.error || "не удалось отправить код"));
+    setErr(j.error || "не удалось отправить код");
   }
 }
 
@@ -134,7 +111,7 @@ async function loginGuest() {
   setErr("");
   const btn = $("btnGuest");
   btn.disabled = true;
-  btn.textContent = "[ вход... ]";
+  btn.textContent = "Вход…";
   const j = await api("/api/auth/guest", {});
   if (j.ok) {
     sessionStorage.setItem("guest_login", "1");
@@ -142,17 +119,14 @@ async function loginGuest() {
   } else {
     setErr(j.error || "ошибка");
     btn.disabled = false;
-    btn.textContent = "[ войти как гость ]";
+    btn.textContent = "Войти как гость";
   }
 }
 
 // prefill saved username
 (async function () {
   const s = await api("/api/saved-login");
-  if (s.username) {
-    $("username").value = s.username;
-    if (s.has_password) $("password").placeholder = "•••••••• (сохранён)";
-  }
+  if (s.username) $("username").value = s.username;
 })();
 
 $("password").addEventListener("keydown", (e) => {

@@ -25,7 +25,7 @@ jobs:
       - name: Build site from static/
         run: |
           mkdir -p _site
-          cp static/radio.html static/radio.js static/matrix.js static/style.css _site/
+          cp static/radio.html static/radio.js static/style.css _site/
           cp static/radio.html _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:

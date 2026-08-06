@@ -87,13 +87,13 @@ async function init() {
     if (stash) {
       sessionStorage.removeItem("just_logged_in");
       const p = JSON.parse(stash);
-      toast("ДОСТУП РАЗРЕШЁН", "вошёл как " + (p.name || me.username) + " · " + fmt(p.followers) + " подписчиков");
+      toast("Вход выполнен", "вошёл как " + (p.name || me.username) + " · " + fmt(p.followers) + " подписчиков");
     }
   } else {
     $("userPanel").classList.add("hidden");
     if (sessionStorage.getItem("guest_login")) {
       sessionStorage.removeItem("guest_login");
-      toast("ГОСТЕВОЙ РЕЖИМ", "только чтение публичной статистики");
+      toast("Гостевой режим", "только чтение публичной статистики");
     }
   }
 }
@@ -118,7 +118,7 @@ async function lookup() {
   box.innerHTML = '<div class="muted">сканирую...</div>';
   const j = await api("/api/lookup", { target });
   if (!j.ok) {
-    box.innerHTML = '<div class="muted">⚠ ' + esc(j.error) + "</div>";
+    box.innerHTML = '<div class="muted">' + esc(j.error) + "</div>";
     return;
   }
   const p = j.profile;
@@ -245,7 +245,7 @@ async function loadTop() {
   btn.textContent = "сканирую подписки... (это займёт время)";
   const j = await api("/api/top-subscriptions?n=5&scan=2000");
   btn.disabled = false;
-  btn.textContent = "★ обновить топ";
+  btn.textContent = "Обновить топ";
   if (!j.ok) return toast("ошибка", j.error, true);
   const list = $("topList");
   list.classList.remove("hidden");
@@ -276,7 +276,7 @@ async function openFriends() {
   updatePickCount();
   const j = await api("/api/friends");
   if (!j.ok) {
-    $("friendList").innerHTML = '<div class="muted">⚠ ' + esc(j.error) + "</div>";
+    $("friendList").innerHTML = '<div class="muted">' + esc(j.error) + "</div>";
     return;
   }
   FRIENDS = j.items || [];
@@ -359,7 +359,7 @@ async function analyze() {
   btn.textContent = "сканирую связи... (это займёт время)";
   const j = await api("/api/analytics");
   btn.disabled = false;
-  btn.textContent = "просканировать связи";
+  btn.textContent = "Просканировать связи";
   if (!j.ok) return toast("ошибка", j.error, true);
   const s = j.stats;
   $("anaGrid").classList.remove("hidden");
@@ -540,7 +540,7 @@ function setAIState(on) {
   AI_ON = on;
   $("btnAI").textContent = on ? "ИИ: вкл" : "ИИ: выкл";
   $("btnAI").classList.toggle("cyan", on);
-  $("aiState").textContent = on ? "🤖 ИИ в чате" : "";
+  $("aiState").textContent = on ? "ИИ в чате" : "";
 }
 
 async function aiToggle() {

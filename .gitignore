@@ -1,5 +1,7 @@
 # local settings (may contain credentials) — never commit
 settings.json
+data.db
+*.bak
 ai_memory.json
 
 # uploaded broadcast tracks

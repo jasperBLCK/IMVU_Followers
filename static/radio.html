@@ -3,23 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IMVU_NET // радио</title>
+<title>IMVU_NET — радио</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="matrix"></canvas>
 <div class="toast-host" id="toastHost"></div>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+</svg>
 
 <header class="topbar">
   <div class="brand">
     <span class="logo">IMVU_NET</span>
-    <span class="sub" id="clock">// радио<span class="blink">_</span></span>
+    <span class="sub" id="clock">радио</span>
   </div>
   <nav class="tabs">
-    <a class="tab" href="/">консоль</a>
-    <button class="tab active">радио</button>
+    <a class="tab" href="/">Консоль</a>
+    <button class="tab active">Радио</button>
   </nav>
   <div class="session-box">
     <span class="badge" id="onAirBadge">off air</span>
@@ -29,23 +32,23 @@
 <main class="live-page">
   <!-- показывается, если не залогинен -->
   <section class="card live-card hidden" id="loginHint">
-    <h2>мой эфир · трансляция</h2>
+    <h2>Мой эфир · трансляция</h2>
     <p class="hint">Войди в <a href="/">консоль</a> своим аккаунтом — здесь появится твоя радиостанция.</p>
   </section>
 
   <section class="card live-card hidden" id="liveCard">
-    <h2>мой эфир · трансляция</h2>
+    <h2>Мой эфир · трансляция</h2>
 
     <div class="live-links">
       <div class="live-link-row">
         <input id="liveStreamLink" readonly value="">
-        <button class="btn cyan small" onclick="copyStreamLink()">копировать</button>
+        <button class="btn primary small" onclick="copyStreamLink()">Копировать</button>
       </div>
-      <div class="hint">mp3-поток — вставь в игру или плеер: звук врубается сразу, как у настоящих радиостанций.</div>
+      <div class="hint">mp3-поток — вставь в игру или плеер: звук включается сразу, как у настоящих радиостанций.</div>
 
       <div class="live-link-row" style="margin-top:10px">
         <input id="liveLink" readonly value="">
-        <button class="btn small" onclick="copyLiveLink()">копировать</button>
+        <button class="btn small" onclick="copyLiveLink()">Копировать</button>
         <button class="btn ghost small" onclick="regenLiveLink()" title="сгенерировать новую ссылку (старая перестанет работать)">↻</button>
       </div>
       <div class="hint">страница эфира для браузера — все слышат один и тот же момент.</div>
@@ -53,8 +56,8 @@
 
     <label class="upload-zone" id="liveDropZone">
       <input type="file" id="liveFileInput" accept=".mp3,audio/mpeg" multiple onchange="liveHandleFiles(this.files)">
-      <div class="uz-icon">📡</div>
-      <div>загрузить песни в эфир — только mp3</div>
+      <div class="uz-icon"><svg class="icon"><use href="#i-upload"/></svg></div>
+      <div>Загрузить песни в эфир — только mp3</div>
     </label>
     <div class="upload-progress hidden" id="upWrap">
       <div class="upload-bar"><div id="upBar"></div></div>
@@ -62,7 +65,7 @@
     </div>
 
     <div class="track-tools">
-      <button class="btn small" id="btnLiveToggle" onclick="liveToggle()">▶ включить эфир</button>
+      <button class="btn primary small" id="btnLiveToggle" onclick="liveToggle()">Включить эфир</button>
       <span class="muted" id="liveStatus">…</span>
     </div>
     <ol class="track-list" id="liveTrackList"></ol>
@@ -71,7 +74,6 @@
 
 <footer class="foot">IMVU_NET · радио</footer>
 
-<script src="matrix.js"></script>
 <script src="radio.js"></script>
 </body>
 </html>

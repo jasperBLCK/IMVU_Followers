@@ -15,110 +15,61 @@
 <header class="topbar">
   <div class="brand">
     <span class="logo">IMVU_NET</span>
-    <span class="sub" id="clock">// радио · музыка<span class="blink">_</span></span>
+    <span class="sub" id="clock">// радио<span class="blink">_</span></span>
   </div>
   <nav class="tabs">
-    <a class="tab" id="backLink" href="/">консоль</a>
+    <a class="tab" href="/">консоль</a>
     <button class="tab active">радио</button>
   </nav>
   <div class="session-box">
-    <span class="badge">on air</span>
+    <span class="badge" id="onAirBadge">off air</span>
   </div>
 </header>
 
-<main class="grid page" id="pageRadio">
-  <div class="col">
-    <!-- player -->
-    <section class="card">
-      <h2>эфир</h2>
-      <div class="radio-player">
-        <div class="rp-vis" id="rpVis">
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span><span></span>
-        </div>
-        <div class="rp-now">
-          <div class="rp-title" id="npTitle">— тишина в эфире —</div>
-          <div class="rp-sub" id="npSub">выбери станцию или запусти свой плейлист</div>
-        </div>
-        <div class="rp-controls">
-          <button class="btn small" id="btnPrev" onclick="playPrev()" title="предыдущий">⏮</button>
-          <button class="btn small" id="btnPlay" onclick="togglePlay()">▶ play</button>
-          <button class="btn small" id="btnNext" onclick="playNext()" title="следующий">⏭</button>
-          <button class="btn ghost small" id="btnShuffle" onclick="toggleShuffle()" title="перемешивать как радио">🔀 выкл</button>
-        </div>
-        <div class="rp-progress">
-          <span class="rp-time" id="tCur">0:00</span>
-          <input type="range" id="seek" min="0" max="1000" value="0" oninput="seekTo(this.value)">
-          <span class="rp-time" id="tDur">∞</span>
-        </div>
-        <div class="rp-volume">
-          <span>vol</span>
-          <input type="range" id="vol" min="0" max="100" value="80" oninput="setVolume(this.value)">
-        </div>
-      </div>
-    </section>
+<main class="live-page">
+  <!-- показывается, если не залогинен -->
+  <section class="card live-card hidden" id="loginHint">
+    <h2>мой эфир · трансляция</h2>
+    <p class="hint">Войди в <a href="/">консоль</a> своим аккаунтом — здесь появится твоя радиостанция.</p>
+  </section>
 
-    <!-- stations -->
-    <section class="card">
-      <h2>радиостанции · стрим</h2>
-      <div class="station-list" id="stationList"></div>
-      <div class="inline" style="margin-top:12px">
-        <input id="stName" placeholder="название станции">
-        <input id="stUrl" placeholder="https://…/stream.aacp">
-        <button class="btn small" onclick="addStation()">+ добавить</button>
-      </div>
-      <div class="hint">Свои станции сохраняются в браузере. Клик по станции — играть, ✕ — удалить свою.</div>
-    </section>
-  </div>
+  <section class="card live-card hidden" id="liveCard">
+    <h2>мой эфир · трансляция</h2>
 
-  <div class="col">
-    <!-- my broadcast (needs Flask backend + account login) -->
-    <section class="card hidden" id="liveCard">
-      <h2>мой эфир · трансляция</h2>
+    <div class="live-links">
       <div class="live-link-row">
-        <input id="liveLink" readonly value="">
-        <button class="btn cyan small" onclick="copyLiveLink()">копировать</button>
-        <button class="btn ghost small" onclick="regenLiveLink()" title="новая ссылка">↻</button>
-      </div>
-      <div class="hint">Ссылка-страница эфира — для браузера: все слышат один и тот же момент плейлиста.</div>
-      <div class="live-link-row" style="margin-top:10px">
         <input id="liveStreamLink" readonly value="">
         <button class="btn cyan small" onclick="copyStreamLink()">копировать</button>
       </div>
-      <div class="hint">mp3-поток эфира — для игры/плееров: вставь эту ссылку как радио — звук врубается сразу, как у настоящих радиостанций.</div>
-      <label class="upload-zone" id="liveDropZone" style="margin-top:12px">
-        <input type="file" id="liveFileInput" accept="audio/*" multiple onchange="liveHandleFiles(this.files)">
-        <div class="uz-icon">📡</div>
-        <div>загрузить песни в эфир — только mp3 (хранятся на сервере)</div>
-      </label>
-      <div class="track-tools">
-        <button class="btn small" id="btnLiveToggle" onclick="liveToggle()">▶ включить эфир</button>
-        <span class="muted" id="liveStatus">эфир выключен</span>
-      </div>
-      <ol class="track-list" id="liveTrackList"></ol>
-    </section>
+      <div class="hint">mp3-поток — вставь в игру или плеер: звук врубается сразу, как у настоящих радиостанций.</div>
 
-    <!-- my tracks -->
-    <section class="card">
-      <h2>мои треки · своё радио</h2>
-      <label class="upload-zone" id="dropZone">
-        <input type="file" id="fileInput" accept="audio/*" multiple onchange="handleFiles(this.files)">
-        <div class="uz-icon">⇪</div>
-        <div>перетащи сюда аудиофайлы или кликни для выбора</div>
-        <div class="hint">mp3 / ogg / wav / m4a — хранятся локально в браузере (IndexedDB), никуда не загружаются</div>
-      </label>
-      <div class="track-tools">
-        <button class="btn cyan small" onclick="playPlaylist()">▶ играть как радио</button>
-        <button class="btn ghost small" onclick="clearTracks()">очистить всё</button>
-        <span class="muted" id="trackCount">0 треков</span>
+      <div class="live-link-row" style="margin-top:10px">
+        <input id="liveLink" readonly value="">
+        <button class="btn small" onclick="copyLiveLink()">копировать</button>
+        <button class="btn ghost small" onclick="regenLiveLink()" title="сгенерировать новую ссылку (старая перестанет работать)">↻</button>
       </div>
-      <ol class="track-list" id="trackList"></ol>
-    </section>
-  </div>
+      <div class="hint">страница эфира для браузера — все слышат один и тот же момент.</div>
+    </div>
+
+    <label class="upload-zone" id="liveDropZone">
+      <input type="file" id="liveFileInput" accept=".mp3,audio/mpeg" multiple onchange="liveHandleFiles(this.files)">
+      <div class="uz-icon">📡</div>
+      <div>загрузить песни в эфир — только mp3</div>
+    </label>
+    <div class="upload-progress hidden" id="upWrap">
+      <div class="upload-bar"><div id="upBar"></div></div>
+      <span class="muted" id="upText">0%</span>
+    </div>
+
+    <div class="track-tools">
+      <button class="btn small" id="btnLiveToggle" onclick="liveToggle()">▶ включить эфир</button>
+      <span class="muted" id="liveStatus">…</span>
+    </div>
+    <ol class="track-list" id="liveTrackList"></ol>
+  </section>
 </main>
 
-<footer class="foot">IMVU_NET · радио · треки хранятся только в твоём браузере</footer>
+<footer class="foot">IMVU_NET · радио</footer>
 
 <script src="matrix.js"></script>
 <script src="radio.js"></script>

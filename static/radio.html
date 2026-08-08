@@ -64,6 +64,17 @@
       <span class="muted" id="upText">0%</span>
     </div>
 
+    <div class="live-link-row" style="margin-top:14px">
+      <input id="reqQuery" placeholder="найти песню в интернете и пустить в эфир — например: 50 cent in da club"
+             onkeydown="if(event.key==='Enter')liveRequest()">
+      <button class="btn small" id="btnReq" onclick="liveRequest()">В эфир</button>
+    </div>
+    <div class="hint">то же самое работает из чата комнаты командой <b>!радио название песни</b> (и «!радио стоп»).</div>
+    <div class="track-tools hidden" id="reqRow">
+      <span class="muted" id="reqTitle"></span>
+      <button class="btn ghost small" onclick="liveRequestStop()">снять заявку</button>
+    </div>
+
     <div class="track-tools">
       <button class="btn primary small" id="btnLiveToggle" onclick="liveToggle()">Включить эфир</button>
       <span class="muted" id="liveStatus">…</span>

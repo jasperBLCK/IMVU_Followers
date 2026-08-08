@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS tracks (
     duration REAL NOT NULL,
     position INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS request (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    title      TEXT NOT NULL DEFAULT '',
+    url        TEXT NOT NULL DEFAULT '',
+    duration   REAL NOT NULL DEFAULT 0,
+    started_at REAL NOT NULL DEFAULT 0
+);
 """
 
 
@@ -50,6 +57,8 @@ def _connect():
 def init_db():
     with _lock, _connect() as con:
         con.executescript(_SCHEMA)
+        if con.execute("SELECT 1 FROM request WHERE id = 1").fetchone() is None:
+            con.execute("INSERT INTO request (id) VALUES (1)")
         if con.execute("SELECT 1 FROM live WHERE id = 1").fetchone() is None:
             con.execute(
                 "INSERT INTO live (id, token, on_air, started_at) VALUES (1, ?, 0, 0)",
@@ -162,6 +171,27 @@ def save_live_state(on=None, started_at=None, token=None):
         return
     with _lock, _connect() as con:
         con.execute("UPDATE live SET " + ", ".join(sets) + " WHERE id = 1", args)
+
+
+def load_request():
+    with _lock, _connect() as con:
+        row = con.execute(
+            "SELECT title, url, duration, started_at FROM request WHERE id = 1"
+        ).fetchone()
+    return dict(row)
+
+
+def save_request(title, url, duration, started_at):
+    with _lock, _connect() as con:
+        con.execute(
+            "UPDATE request SET title = ?, url = ?, duration = ?, started_at = ?"
+            " WHERE id = 1",
+            (title, url, duration, started_at),
+        )
+
+
+def clear_request():
+    save_request("", "", 0, 0)
 
 
 def add_track(tid, name, file, duration):

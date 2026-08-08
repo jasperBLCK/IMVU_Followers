@@ -81,7 +81,23 @@ function updateBadge() {
   document.getElementById("rpVis").classList.toggle("on", listening && !audio.paused);
 }
 
+function tuneInRequest() {
+  // заявка из интернета — слушаем прямой mp3-поток эфира
+  curIndex = -2;
+  audio.src = "/live/" + encodeURIComponent(TOKEN) + "/stream?t=" + Date.now();
+  audio.play().then(() => {
+    setNP(state.request.title, "по заявке · прямой эфир");
+    renderTracks();
+    updateBadge();
+  }).catch(() => {
+    toast("нажми play ещё раз — браузер требует клик", true);
+    listening = false;
+    updateUI();
+  });
+}
+
 function tuneIn() {
+  if (state && state.request) return tuneInRequest();
   const pos = currentPosition();
   if (!pos) return;
   const t = state.tracks[pos.index];
@@ -114,8 +130,16 @@ async function resync(force) {
       return;
     }
     if (!listening) {
+      if (st.request) {
+        setNP(st.request.title, "по заявке · нажми play чтобы слушать");
+        return;
+      }
       const pos = currentPosition();
       if (pos) setNP(st.tracks[pos.index].name, "сейчас в эфире · нажми play чтобы слушать");
+      return;
+    }
+    if (st.request) {
+      if (curIndex !== -2 || audio.paused || force) tuneInRequest();
       return;
     }
     const pos = currentPosition();

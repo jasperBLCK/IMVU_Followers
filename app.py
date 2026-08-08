@@ -344,12 +344,20 @@ _live_lock = threading.Lock()
 
 def _live_public(meta):
     tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
+    req = radio.request_active()
     return {
         "on": meta["on"],
         "started_at": meta["started_at"],
         "server_time": time.time(),
         "tracks": [{"id": t["id"], "name": t["name"], "duration": t["duration"]} for t in tracks],
         "now": radio.live_now(meta),
+        "request": {
+            "title": req["title"],
+            "duration": req["duration"],
+            "offset": round(req["offset"], 3),
+        }
+        if req
+        else None,
     }
 
 
@@ -424,6 +432,8 @@ async def live_toggle(request: Request):
         if on and not meta["tracks"]:
             raise ApiError("Сначала загрузи треки")
         storage.save_live_state(on=on, started_at=time.time() if on else None)
+        if not on:
+            storage.clear_request()
     return {"ok": True, "on": on}
 
 
@@ -437,6 +447,35 @@ def live_play(tid: str, request: Request):
         if offset is None:
             raise ApiError("Трек не найден", 404)
         storage.save_live_state(on=True, started_at=time.time() - offset)
+    return {"ok": True}
+
+
+def _start_request(query):
+    """Найти песню в интернете и сразу пустить в эфир (без скачивания)."""
+    song = radio.search_song(query)
+    with _live_lock:
+        storage.save_request(song["title"], song["url"], song["duration"], time.time())
+        storage.save_live_state(on=True)
+    return song
+
+
+@app.post("/api/live/request")
+async def live_request(request: Request):
+    require(request, "user")
+    query = ((await _json(request)).get("query") or "").strip()
+    if not query:
+        raise ApiError("Напиши, какую песню найти")
+    try:
+        song = _start_request(query)
+    except radio.RequestError as exc:
+        raise ApiError(str(exc))
+    return {"ok": True, "title": song["title"], "duration": song["duration"]}
+
+
+@app.delete("/api/live/request")
+def live_request_stop(request: Request):
+    require(request, "user")
+    storage.clear_request()
     return {"ok": True}
 
 
@@ -890,6 +929,41 @@ def _stop_ai(ctx):
         ai.stop()
 
 
+_RADIO_CMDS = ("!радио", "!radio")
+_RADIO_STOP = {"стоп", "stop", "выкл"}
+
+
+def _radio_command(chat, text):
+    """Команда из чата комнаты: «!радио <песня>» — найти и пустить в эфир."""
+    low = text.lower()
+    cmd = next((c for c in _RADIO_CMDS if low.startswith(c)), None)
+    if cmd is None:
+        return
+    query = text[len(cmd):].strip()
+
+    def work():
+        try:
+            if not query:
+                chat.send("напиши: !радио название песни (или !радио стоп)")
+                return
+            if query.lower() in _RADIO_STOP:
+                storage.clear_request()
+                chat.send("заявка снята — эфир вернулся к плейлисту")
+                return
+            chat.send("ищу: " + query + "…")
+            song = _start_request(query)
+            chat.send("в эфире: " + song["title"])
+        except radio.RequestError as exc:
+            try:
+                chat.send("не вышло: " + str(exc))
+            except IMQError:
+                pass
+        except Exception:
+            pass
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 @app.post("/api/room/join")
 async def api_room_join(request: Request):
     ctx = require(request, "user")
@@ -905,6 +979,7 @@ async def api_room_join(request: Request):
         info = chat.start()
     except (IMQError, IMVUError) as exc:
         raise ApiError(str(exc))
+    chat.on_line = lambda m: _radio_command(chat, m.text or "")
     ctx["chat"] = chat
     recent = _remember_room(info.room_id, info.name)
     return {

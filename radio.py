@@ -6,7 +6,10 @@
 """
 
 import base64
+import json
 import os
+import shutil
+import subprocess
 import time
 
 import storage
@@ -145,6 +148,102 @@ def mp3_duration(path):
     return seconds
 
 
+# --------------------------------------------------------------------------- #
+# Заявки: песня из интернета транслируется в эфир напрямую, без скачивания
+# --------------------------------------------------------------------------- #
+REQUEST_MAX_SECS = 15 * 60
+
+
+class RequestError(Exception):
+    pass
+
+
+def tools_available():
+    """(yt-dlp есть, ffmpeg есть) — нужны для заявок."""
+    return bool(shutil.which("yt-dlp")), bool(shutil.which("ffmpeg"))
+
+
+def search_song(query):
+    """Ищет песню в интернете (YouTube через yt-dlp) без скачивания.
+
+    Возвращает {"title", "url" (прямой аудио-поток), "duration"}.
+    """
+    has_ytdlp, has_ffmpeg = tools_available()
+    if not has_ytdlp or not has_ffmpeg:
+        missing = [n for n, ok in (("yt-dlp", has_ytdlp), ("ffmpeg", has_ffmpeg)) if not ok]
+        raise RequestError(
+            "на сервере не хватает: " + ", ".join(missing)
+            + " — установи и перезапусти сервер"
+        )
+    info = None
+    # YouTube — основной источник, SoundCloud — запасной (если YouTube недоступен)
+    for prefix in ("ytsearch1:", "scsearch1:"):
+        try:
+            out = subprocess.run(
+                ["yt-dlp", "--no-playlist", "-f", "bestaudio/best", "-j", prefix + query],
+                capture_output=True, text=True, timeout=40,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if out.returncode != 0 or not out.stdout.strip():
+            continue
+        try:
+            info = json.loads(out.stdout.strip().splitlines()[0])
+            break
+        except ValueError:
+            continue
+    if info is None:
+        raise RequestError("ничего не нашлось по запросу")
+    url = info.get("url", "")
+    duration = float(info.get("duration") or 0)
+    title = info.get("title", query)
+    if not url or duration <= 0:
+        raise RequestError("у найденного ролика нет аудио-потока")
+    if duration > REQUEST_MAX_SECS:
+        raise RequestError("слишком длинное (больше 15 минут) — уточни запрос")
+    return {"title": title, "url": url, "duration": duration}
+
+
+def request_active(req=None):
+    """Активная заявка (играет прямо сейчас) или None."""
+    if req is None:
+        req = storage.load_request()
+    if not req["url"] or req["duration"] <= 0:
+        return None
+    offset = time.time() - req["started_at"]
+    if offset < 0 or offset >= req["duration"]:
+        return None
+    req = dict(req)
+    req["offset"] = offset
+    return req
+
+
+def _request_stream(req):
+    """Поток заявки: ffmpeg перегоняет удалённое аудио в mp3 в реальном времени."""
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-re",
+        "-ss", str(max(req["offset"], 0.0)),
+        "-i", req["url"],
+        "-vn", "-acodec", "libmp3lame", "-b:a", "128k", "-f", "mp3", "-",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    started_at = req["started_at"]
+    last_check = time.time()
+    try:
+        while True:
+            data = proc.stdout.read(8192)
+            if not data:
+                break
+            yield data
+            if time.time() - last_check >= 0.5:
+                last_check = time.time()
+                cur = storage.load_request()
+                if cur["started_at"] != started_at or request_active(cur) is None:
+                    break
+    finally:
+        proc.kill()
+
+
 def track_start_offset(meta, tid):
     """Смещение начала трека от начала плейлиста (сек), или None."""
     pos = 0.0
@@ -179,6 +278,12 @@ def stream_generator():
     initial_burst = 8.0  # стартовый запас при подключении, чтобы плеер не лагал
     lead = initial_burst
     while True:
+        req = request_active()
+        if req is not None:
+            # заявка из чата перебивает плейлист — гоним её напрямую из интернета
+            yield from _request_stream(req)
+            lead = min(lead, 2.0)
+            continue
         meta = storage.load_live()
         now = live_now(meta)
         if now is None:
@@ -224,7 +329,11 @@ def stream_generator():
                     if time.time() - last_check >= 0.5:
                         last_check = time.time()
                         cur = storage.load_live()
-                        if cur["started_at"] != epoch or not cur["on"]:
+                        if (
+                            cur["started_at"] != epoch
+                            or not cur["on"]
+                            or request_active() is not None
+                        ):
                             switched = True
                             break
         except OSError:
@@ -241,6 +350,6 @@ def stream_generator():
                 break
             time.sleep(min(left, 0.3))
             cur = storage.load_live()
-            if cur["started_at"] != epoch or not cur["on"]:
+            if cur["started_at"] != epoch or not cur["on"] or request_active() is not None:
                 lead = min(lead, 2.0)
                 break

@@ -40,6 +40,14 @@ function renderLive() {
   document.getElementById("onAirBadge").classList.toggle("ok", on);
   document.getElementById("liveStatus").textContent =
     (on ? "в эфире" : "эфир выключен") + " · " + liveState.tracks.length + " треков";
+  const reqRow = document.getElementById("reqRow");
+  if (liveState.request) {
+    reqRow.classList.remove("hidden");
+    document.getElementById("reqTitle").textContent =
+      "сейчас по заявке: " + liveState.request.title;
+  } else {
+    reqRow.classList.add("hidden");
+  }
   const host = document.getElementById("liveTrackList");
   host.innerHTML = "";
   liveState.tracks.forEach((t, i) => {
@@ -119,6 +127,38 @@ function liveHandleFiles(files) {
 }
 
 /* ---------- controls ---------- */
+async function liveRequest() {
+  const inp = document.getElementById("reqQuery");
+  const q = inp.value.trim();
+  if (!q) return;
+  const btn = document.getElementById("btnReq");
+  btn.disabled = true;
+  btn.textContent = "Ищу…";
+  try {
+    const r = await fetch("/api/live/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q }),
+    });
+    const j = await r.json();
+    if (!j.ok) return toast(j.error || "не нашлось", true);
+    inp.value = "";
+    toast("в эфире: " + j.title);
+    liveRefresh();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "В эфир";
+  }
+}
+
+async function liveRequestStop() {
+  const r = await fetch("/api/live/request", { method: "DELETE" });
+  const j = await r.json();
+  if (!j.ok) return toast(j.error || "ошибка", true);
+  toast("заявка снята — эфир вернулся к плейлисту");
+  liveRefresh();
+}
+
 async function livePlay(tid, name) {
   const r = await fetch("/api/live/play/" + tid, { method: "POST" });
   const j = await r.json();

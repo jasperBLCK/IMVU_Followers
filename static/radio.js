@@ -46,6 +46,12 @@ function renderLive() {
     const li = document.createElement("li");
     li.className = "track" + (on && liveState.now && liveState.now.index === i ? " playing" : "");
     li.style.cursor = "default";
+    const play = document.createElement("button");
+    play.className = "tr-play";
+    play.type = "button";
+    play.textContent = "\u25B6";
+    play.title = "играть этот трек в эфире прямо сейчас";
+    play.onclick = () => livePlay(t.id, t.name);
     const name = document.createElement("span");
     name.className = "tr-name";
     name.textContent = t.name;
@@ -62,7 +68,7 @@ function renderLive() {
       if (!j.ok) return toast(j.error || "не удалось удалить", true);
       liveRefresh();
     };
-    li.append(name, dur, x);
+    li.append(play, name, dur, x);
     host.appendChild(li);
   });
 }
@@ -113,6 +119,14 @@ function liveHandleFiles(files) {
 }
 
 /* ---------- controls ---------- */
+async function livePlay(tid, name) {
+  const r = await fetch("/api/live/play/" + tid, { method: "POST" });
+  const j = await r.json();
+  if (!j.ok) return toast(j.error || "ошибка", true);
+  toast("в эфире: " + name + " (игра подхватит через пару секунд)");
+  liveRefresh();
+}
+
 async function liveToggle() {
   const r = await fetch("/api/live/toggle", {
     method: "POST",
@@ -156,7 +170,7 @@ async function init() {
     ["dragleave", "drop"].forEach((ev) =>
       dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("drag"); }));
     dz.addEventListener("drop", (e) => liveHandleFiles(e.dataTransfer.files));
-    setInterval(liveRefresh, 15000); // подсветка текущего трека
+    setInterval(liveRefresh, 5000); // подсветка текущего трека
   } catch (e) {
     document.getElementById("loginHint").classList.remove("hidden");
   }

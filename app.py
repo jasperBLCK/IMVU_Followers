@@ -427,6 +427,19 @@ async def live_toggle(request: Request):
     return {"ok": True, "on": on}
 
 
+@app.post("/api/live/play/{tid}")
+def live_play(tid: str, request: Request):
+    """Переключить эфир на выбранный трек прямо сейчас."""
+    require(request, "user")
+    with _live_lock:
+        meta = storage.load_live()
+        offset = radio.track_start_offset(meta, tid)
+        if offset is None:
+            raise ApiError("Трек не найден", 404)
+        storage.save_live_state(on=True, started_at=time.time() - offset)
+    return {"ok": True}
+
+
 @app.post("/api/live/regen")
 def live_regen(request: Request):
     require(request, "user")

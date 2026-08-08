@@ -2,7 +2,7 @@
 "use strict";
 
 const TOKEN = location.pathname.split("/").filter(Boolean).pop();
-const RESYNC_MS = 15000;
+const RESYNC_MS = 5000;
 const MAX_DRIFT = 2.5; // сек — допустимое рассогласование с сервером
 
 const audio = new Audio();

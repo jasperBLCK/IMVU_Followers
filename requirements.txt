@@ -4,3 +4,4 @@ python-multipart>=0.0.9
 requests>=2.31
 urllib3>=2.0
 websockets>=12,<15
+yt-dlp>=2024.10  # заявки песен из интернета в эфир (плюс нужен ffmpeg в PATH)

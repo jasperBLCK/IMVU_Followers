@@ -145,6 +145,18 @@ def mp3_duration(path):
     return seconds
 
 
+def track_start_offset(meta, tid):
+    """Смещение начала трека от начала плейлиста (сек), или None."""
+    pos = 0.0
+    for t in meta["tracks"]:
+        if t.get("duration", 0) <= 0:
+            continue
+        if t["id"] == tid:
+            return pos
+        pos += t["duration"]
+    return None
+
+
 def live_now(meta):
     """Что играет прямо сейчас: индекс трека и смещение в секундах."""
     tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
@@ -163,8 +175,8 @@ def stream_generator():
     """Бесконечный mp3-поток: отдаёт треки плейлиста с текущего места эфира,
     как Icecast-радио — все слушатели получают один и тот же момент."""
     chunk_size = 16384
-    buffer_ahead = 10.0   # секунд аудио вперёд в устоявшемся режиме
-    initial_burst = 20.0  # стартовый запас при подключении, чтобы плеер не лагал
+    buffer_ahead = 4.0   # секунд аудио вперёд в устоявшемся режиме
+    initial_burst = 8.0  # стартовый запас при подключении, чтобы плеер не лагал
     lead = initial_burst
     while True:
         meta = storage.load_live()
@@ -174,6 +186,7 @@ def stream_generator():
             yield _SILENT_MP3
             time.sleep(_SILENT_SECS)
             continue
+        epoch = meta["started_at"]  # меняется при ручном переключении трека
         tracks = [t for t in meta["tracks"] if t.get("duration", 0) > 0]
         track = tracks[now["index"]]
         path = os.path.join(LIVE_DIR, track["file"])
@@ -188,6 +201,8 @@ def stream_generator():
         # момент, когда этот трек закончится в эфире
         track_ends_at = t0 + max(track["duration"] - now["offset"], 0.0)
         sent = 0
+        last_check = t0
+        switched = False
         try:
             with open(path, "rb") as fh:
                 fh.seek(min(start, max(size - 1, 0)))
@@ -205,9 +220,27 @@ def stream_generator():
                     if ahead > 0:
                         lead = buffer_ahead  # стартовый запас отдан
                         time.sleep(min(ahead, 1.0))
+                    # владелец переключил трек / выключил эфир — бросаем файл сразу
+                    if time.time() - last_check >= 0.5:
+                        last_check = time.time()
+                        cur = storage.load_live()
+                        if cur["started_at"] != epoch or not cur["on"]:
+                            switched = True
+                            break
         except OSError:
             time.sleep(1.0)
             continue
-        # файл отдан раньше конца трека (буфер) — ждём, пока эфир перейдёт
-        # на следующий трек (небольшой запас против зацикливания на стыке)
-        time.sleep(max(track_ends_at - time.time() + 0.05, 0.05))
+        if switched:
+            lead = min(lead, 2.0)  # после переключения не копим большой буфер
+            continue
+        # файл отдан раньше конца трека (буфер) — ждём перехода эфира на
+        # следующий трек, попутно следя за ручным переключением
+        while True:
+            left = track_ends_at - time.time() + 0.05
+            if left <= 0:
+                break
+            time.sleep(min(left, 0.3))
+            cur = storage.load_live()
+            if cur["started_at"] != epoch or not cur["on"]:
+                lead = min(lead, 2.0)
+                break

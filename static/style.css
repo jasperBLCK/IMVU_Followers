@@ -285,6 +285,12 @@ select { cursor: pointer; }
 .track.playing { border-color: var(--text); }
 .track.playing::before { content: "▶"; color: var(--ok); }
 .tr-name { flex: 1; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-play {
+  cursor: pointer; color: var(--muted); background: transparent;
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 9px;
+  font-size: 11px; line-height: 1.5;
+}
+.tr-play:hover { color: var(--ok); border-color: rgba(111,221,139,.5); }
 .track-list:empty::before { content: "плейлист пуст — загрузи свои песни"; color: var(--muted); font-size: 12.5px; }
 
 /* страница слушателя */
